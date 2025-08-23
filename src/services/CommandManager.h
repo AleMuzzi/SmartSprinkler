@@ -5,7 +5,6 @@
 #ifndef COMMANDMANAGER_H
 #define COMMANDMANAGER_H
 
-#include <thread>
 
 #include "MongooseHttpServer.h"
 #include "UdpServer.h"
@@ -15,18 +14,18 @@
 class CommandManager {
 public:
     void init();
-    void start_async();
-    void stop();
-
-    static void process_command(const Command &command);
+    void poll();
 
 private:
     // UdpServer udp_server;
     MongooseHttpServer server;
     bool stopped = false;
     TaskHandle_t xHandle = nullptr;
-};
 
+    void setup_routes();
+
+    static void process_command(const Command &command);
+};
 
 
 #endif //COMMANDMANAGER_H

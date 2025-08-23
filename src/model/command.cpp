@@ -61,6 +61,13 @@ std::shared_ptr<Command> Command::from_json(const char *json_str, Deserializatio
         return nullptr;
     }
 
+    if(!doc["amount"].is<int>()) {
+        error = DeserializationError::InvalidInput;
+        error_msg = "Invalid 'amount' value: must be an integer";
+        return nullptr;
+    }
+
+
     return std::make_shared<Command>(Command(
         action,
         target,
