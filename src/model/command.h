@@ -8,6 +8,8 @@
 #include <memory>
 #include <ArduinoJson.h>
 
+#include "ICanBeDeserialized.h"
+
 class Action {
 public:
     enum Value {
@@ -45,7 +47,7 @@ private:
     Value value;
 };
 
-class Command {
+class Command: public ICanBeDeserialized {
 public:
 
     Command(const Action action, const Target target, const int amount = 0)
@@ -59,7 +61,7 @@ public:
 
     // endregion
 
-    static std::shared_ptr<Command> from_json(const char *json_str, DeserializationError& error, String &error_msg);
+    static std::shared_ptr<ICanBeDeserialized> from_json(const char *json_str, DeserializationError& error, String &error_msg);
 
 private:
     Action action;

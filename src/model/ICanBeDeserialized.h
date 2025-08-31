@@ -1,0 +1,16 @@
+//
+// Created by Alessandro Muzzi on 23/08/25.
+//
+
+#ifndef ICANBEDESERIALIZED_H
+#define ICANBEDESERIALIZED_H
+
+
+#include "ArduinoJson.h"
+
+class ICanBeDeserialized {
+public:
+    static std::shared_ptr<ICanBeDeserialized> from_json(const char *json_str, DeserializationError& error, String &error_msg);
+};
+
+#endif //ICANBEDESERIALIZED_H

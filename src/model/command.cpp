@@ -38,7 +38,7 @@ Target Target::from_string(const char* str, bool& success) {
     return PEPERONCINO;
 }
 
-std::shared_ptr<Command> Command::from_json(const char *json_str, DeserializationError& error, String &error_msg) {
+std::shared_ptr<ICanBeDeserialized> Command::from_json(const char *json_str, DeserializationError& error, String &error_msg) {
     JsonDocument doc;
     error = deserializeJson(doc, json_str);
 
@@ -68,7 +68,7 @@ std::shared_ptr<Command> Command::from_json(const char *json_str, Deserializatio
     }
 
 
-    return std::make_shared<Command>(Command(
+    return std::make_shared<ICanBeDeserialized>(Command(
         action,
         target,
         doc["amount"].as<int>()
