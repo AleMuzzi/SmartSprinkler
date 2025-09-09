@@ -199,8 +199,8 @@ void setup_command_routes() {
 
                     Hashtable<String, String> status;
                     status.put("status", "ok");
-                    status.put("temperature", String(temperature, 2));
-                    status.put("humidity", String(humidity, 2));
+                    status.put("air_temperature", String(temperature, 2));
+                    status.put("air_humidity", String(humidity, 2));
                     status.put("water_pump", water_pump.is_on() ? "on" : "off");
 
                     req->send(
