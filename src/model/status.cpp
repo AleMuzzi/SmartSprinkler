@@ -9,3 +9,7 @@
 std::shared_ptr<ICanBeDeserialized> Status::from_json(const char *json_str, DeserializationError& error, String &error_msg) {
     return std::make_shared<ICanBeDeserialized>(Status());
 }
+
+String Status::getType() const {
+    return "Status";
+}

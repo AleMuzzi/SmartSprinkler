@@ -46,6 +46,8 @@ public:
 
     std::shared_ptr<ICanBeDeserialized> fromJson(const char *json_str, DeserializationError &error, String &error_msg) const;
     void handler(MongooseHttpServerRequest *req, const std::shared_ptr<ICanBeDeserialized> &command) const;
+    bool hasPayload() const { return _from_json != nullptr; }
+    bool hasHandler() const { return _handler != nullptr; }
 
 private:
     // The HTTP method for this route (GET, POST, etc.)

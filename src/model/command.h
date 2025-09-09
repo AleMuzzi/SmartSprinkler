@@ -19,7 +19,7 @@ public:
     };
 
     Action() = default;
-    Action(const Value v) : value(v) {}
+    Action(const Value v) : value(v) {} // NOLINT(*-explicit-constructor)
 
     Value get() const { return value; }
 
@@ -37,7 +37,7 @@ public:
     };
 
     Target() = default;
-    Target(const Value v) : value(v) {}
+    Target(const Value v) : value(v) {} // NOLINT(*-explicit-constructor)
 
     Value get() const { return value; }
 
@@ -47,7 +47,7 @@ private:
     Value value;
 };
 
-class Command: public ICanBeDeserialized {
+class Command final : public ICanBeDeserialized {
 public:
 
     Command(const Action action, const Target target, const int amount = 0)
@@ -62,6 +62,7 @@ public:
     // endregion
 
     static std::shared_ptr<ICanBeDeserialized> from_json(const char *json_str, DeserializationError& error, String &error_msg);
+    String getType() const override;
 
 private:
     Action action;

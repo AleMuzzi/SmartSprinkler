@@ -17,6 +17,7 @@ public:
     Status() = default;
 
     static std::shared_ptr<ICanBeDeserialized> from_json(const char *json_str, DeserializationError& error, String &error_msg);
+    String getType() const override;
 };
 
 

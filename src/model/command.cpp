@@ -67,10 +67,13 @@ std::shared_ptr<ICanBeDeserialized> Command::from_json(const char *json_str, Des
         return nullptr;
     }
 
-
-    return std::make_shared<ICanBeDeserialized>(Command(
+    return std::make_shared<Command>(
         action,
         target,
         doc["amount"].as<int>()
-        ));
+        );
+}
+
+String Command::getType() const {
+    return "Command";
 }
