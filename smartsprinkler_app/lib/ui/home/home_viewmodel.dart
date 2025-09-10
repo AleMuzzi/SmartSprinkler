@@ -17,15 +17,9 @@ class HomePageViewModel {
   HomePageViewModel();
 
   Future<void> commandIrrigation(Target target, Action action) async {
-    final String url = "${settings.apiUrl}/command";
-    await Fluttertoast.showToast(
-      msg: "Sending a command to $url",
-      fontSize: 16.0,
-    );
-
     // send http post request to perform/stop irrigation
     final response = await http.post(
-        Uri.parse(url),
+        Uri.parse("${settings.apiUrl}/command"),
         body: Command(target: target, action: action).toJson()
     );
 
