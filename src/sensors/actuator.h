@@ -5,6 +5,7 @@
 #ifndef ACTUATOR_H
 #define ACTUATOR_H
 
+#include <cstdint>
 
 
 class Actuator {
@@ -13,20 +14,16 @@ class Actuator {
  */
 public:
 
-    explicit Actuator(int pin);
+    explicit Actuator(uint8_t pin);
 
     void switch_on() const;
     void switch_off() const;
     bool is_on() const;
 
 private:
-    // :
-    // - params to config it
-    // - methods to control it
-    int pin;
+    uint8_t pin{};
 
 };
-
 
 
 #endif //ACTUATOR_H

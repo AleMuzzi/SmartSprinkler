@@ -21,11 +21,13 @@
 #include "sensors/actuator.h"
 
 #include "sensors/camera.h"
+#include "sensors/sensor_soil_moisture.h"
 #include "sensors/temp_humidity_sensor.h"
 #include "services/CommandManager.h"
 #include "utils/hashtable_ext.h"
 
 #define PIN_PUMP_RELAY 12
+#define PIN_SOIL_MOISTURE_SENSOR 14
 
 constexpr char ssid[15] = "Brignuzzi WiFi";
 constexpr char password[25] = "88uffleukticegscwrizaqrt"; // Enter WIFI Password
@@ -47,13 +49,15 @@ unsigned long previousMillis = 0;
 constexpr long interval = 2000; // Interval at which to read sensor (milliseconds)
 
 // U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* clock=*/ A5, /* data=*/ A4, /* reset=*/ U8X8_PIN_NONE);  // High speed I2C
-float temperature;
-float humidity;
+float air_temperature;
+float air_humidity;
+float soil_moisture;
 
 CommandManager command_manager;
 Hashtable<String, Route> routes;
 
 const Actuator water_pump(PIN_PUMP_RELAY);
+const SensorSoilMoisture soil_moisture_sensor(PIN_SOIL_MOISTURE_SENSOR);
 
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
@@ -106,6 +110,7 @@ void setup() {
     setup_command_routes();
 
     Serial.println("\n\nSystem Fully Initialized!");
+    Serial.println("-------------------------------");
 }
 
 void loop() {
@@ -113,22 +118,28 @@ void loop() {
     const unsigned long currentMillis = millis();
 
     if (currentMillis - previousMillis >= interval) {
-        printCurrentTime();
+        // printCurrentTime();
         previousMillis = currentMillis;
 
-        // Get temperature event and print its value
-        temperature = TempHumiditySensor::getTemperature();
-        if (!isnan(temperature)) {
+        // Update air temperature
+        air_temperature = TempHumiditySensor::getTemperature();
+        if (!isnan(air_temperature)) {
             Serial.print("Temperature: ");
-            Serial.println(temperature);
+            Serial.println(air_temperature);
         }
 
-        // Get humidity event and print its value
-        humidity = TempHumiditySensor::getHumidity();
-        if (!isnan(humidity)) {
+        // Update air humidity
+        air_humidity = TempHumiditySensor::getHumidity();
+        if (!isnan(air_humidity)) {
             Serial.print("Humidity: ");
-            Serial.println(humidity);
+            Serial.println(air_humidity);
         }
+
+        // Update soil moisture
+        // soil_moisture = soil_moisture_sensor.getSoilMoisture();
+        // Serial.print("Soil Moisture: ");
+        // Serial.println(soil_moisture);
+        Serial.println("-------------------------------");
     }
 
     if (!command_manager.is_stopped()) {
@@ -199,8 +210,9 @@ void setup_command_routes() {
 
                     Hashtable<String, String> status;
                     status.put("status", "ok");
-                    status.put("air_temperature", String(temperature, 2));
-                    status.put("air_humidity", String(humidity, 2));
+                    status.put("air_temperature", String(air_temperature, 2));
+                    status.put("air_humidity", String(air_humidity, 2));
+                    status.put("soil_moisture", String(soil_moisture, 2));
                     status.put("water_pump", water_pump.is_on() ? "on" : "off");
 
                     req->send(

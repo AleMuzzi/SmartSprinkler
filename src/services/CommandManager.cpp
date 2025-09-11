@@ -37,10 +37,11 @@ void CommandManager::setup_routes(const Hashtable<String, Route>& routes) {
 
         this->server.on(path.c_str(), route->getHttpMethod(), [route](MongooseHttpServerRequest *req) {
             Serial.print("Request received on path: ");
-            Serial.println(req->uri().c_str());
+            const String uri = req->uri().toString();
+            Serial.println(uri.substring(0, uri.indexOf(' ')));
             const String body = req->body();
-            Serial.print("Request body: ");
-            Serial.println(body);
+            // Serial.print("Request body: ");
+            // Serial.println(body);
 
             // const auto curr_route = this->routes.get(req->uri());
             if (route == nullptr) {
@@ -56,12 +57,10 @@ void CommandManager::setup_routes(const Hashtable<String, Route>& routes) {
             }
 
             if (!route->hasPayload()) {
-                Serial.println("No payload");
                 route->handler(req, std::shared_ptr<ICanBeDeserialized>());
                 return;
             }
 
-            Serial.println("Request has payload, parsing...");
             DeserializationError error;
             String error_msg;
             const auto command = route->fromJson(body.c_str(), error, error_msg);

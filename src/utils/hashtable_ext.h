@@ -5,7 +5,7 @@
 #ifndef HASHTABLE_EXT_H
 #define HASHTABLE_EXT_H
 
-#include <Hashtable.h>
+#include "../lib/Hashtable.h"
 
 static String field_to_string(const String& str) {
     return "\"" + str + "\"";

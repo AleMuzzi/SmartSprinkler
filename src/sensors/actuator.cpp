@@ -5,8 +5,9 @@
 #include "actuator.h"
 
 #include <Arduino.h>
+#include <cstdint>
 
-Actuator::Actuator(const int pin): pin(pin) {
+Actuator::Actuator(const uint8_t pin): pin(pin) {
     pinMode(pin, OUTPUT);
     digitalWrite(pin, LOW); // Ensure the actuator is off initially
 }
