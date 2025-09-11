@@ -22,6 +22,7 @@ class _SprinklerDataComponentState extends State<SprinklerDataComponent> {
         // show the data contained in widget.viewModel.sprinklerData
         Text('Air Humidity: ${widget.viewModel.sprinklerData.airHumidity}%', style: TextStyle(fontSize: 24)),
         Text('Air Temperature: ${widget.viewModel.sprinklerData.airTemperature}°C', style: TextStyle(fontSize: 24)),
+        // Text('Soil Moisture: ${widget.viewModel.sprinklerData.soilMoisture}%', style: TextStyle(fontSize: 24)),
         Text('Water Pump: ${widget.viewModel.sprinklerData.waterPump}', style: TextStyle(fontSize: 24)),
       ],
     );

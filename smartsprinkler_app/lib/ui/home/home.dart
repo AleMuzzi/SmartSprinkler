@@ -19,7 +19,7 @@ class HomePage extends PageWidget {
 }
 
 class _SettingsPageState extends State<HomePage> {
-  Target? selectedPlant;
+  Target? selectedPlant = Target.PEPERONCINO;
   Sprinkler sprinkler = Sprinkler();
   SprinklerDataComponentViewModel sprinklerDataComponentViewModel = SprinklerDataComponentViewModel();
 
@@ -86,6 +86,7 @@ class _SettingsPageState extends State<HomePage> {
                           : null, // disable button if no plant is selected
                       child: const Text('Stop Irrigation'),
                     ),
+                    const SizedBox(height: 60),
                   ],
                 )
               ),
