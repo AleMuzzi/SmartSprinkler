@@ -1,0 +1,52 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+esp:
+  base_url: "http://192.168.1.10"
+  poll_interval: 120
+
+weather:
+  latitude: 44.695946
+  longitude: 10.443454
+  cloud_cover_threshold: 45 # Lowered slightly; Po Valley haze/humidity can block sun even at 45% cloud cover
+
+thresholds:
+  soil_moisture:
+    dry: 35      # Chilis in pots start root stress if moisture drops below 35%
+    moist: 65    # Safe mid-point; avoids over-saturation
+  temperature:
+    low: 16      # Below 16°C, chilis stunt growth (Low)
+    medium: 29   # Above 29°C on an outdoor balcony, evaporation skyrockets (High)
+  humidity:
+    low: 45      # Anything below 45% in Reggio Emilia is considered dry air
+    medium: 70   # Standard Po Valley humidity; above 70% reduces plant transpiration (High)
+
+plants:
+  habanero:
+    display_name: "Habanero"
+    esp_target: "HABANERO"
+    base_need: 0.65       # Thirsty Capsicum chinense variety
+    threshold: 0.50       # Lower activation threshold so it waters proactively before midday heat
+    watering_duration: 6  # Needs a deep soak to reach the bottom of the pot
+
+  peperoncino:
+    display_name: "Peperoncino"
+    esp_target: "PEPERONCINO"
+    base_need: 0.55       # Capsicum annuum; slightly more resilient than super-hots
+    threshold: 0.55       # Standard threshold
+    watering_duration: 5
+
+  carolina_reaper:
+    display_name: "Carolina Reaper"
+    esp_target: "CAROLINA_REAPER"
+    base_need: 0.70       # Super-hots drop flowers if stressed; needs high baseline water
+    threshold: 0.48       # Sensitive; trigger watering easily during peak sun hours
+    watering_duration: 6
+
+  rosmarino:
+    display_name: "Rosmarino"
+    esp_target: "ROSMARINO"
+    base_need: 0.20       # Mediterranean herb; thrives on neglect
+    threshold: 0.80       # High threshold! Only water when the net is absolutely certain it's bone-dry
+    watering_duration: 2  # Short burst just to sustain it, avoids root rot entirely

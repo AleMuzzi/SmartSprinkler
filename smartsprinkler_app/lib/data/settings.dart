@@ -1,14 +1,11 @@
 class Settings {
-  // Singleton instance
   static final Settings _instance = Settings._();
 
-  // String apiBaseUrl = "http://sprinkler.casabrignuzzi.com.es";
   String apiBaseUrl = "http://192.168.1.10";
+  String bayesianServerUrl = "http://192.168.1.11:8080";
 
-  // Private constructor to prevent direct instantiation
   Settings._();
 
-  // Factory constructor to return the singleton instance
   factory Settings() {
     return _instance;
   }
@@ -16,5 +13,10 @@ class Settings {
   String get apiUrl => _instance.apiBaseUrl;
   set apiUrl(String url) {
     _instance.apiBaseUrl = url;
+  }
+
+  String get bayesianUrl => _instance.bayesianServerUrl;
+  set bayesianUrl(String url) {
+    _instance.bayesianServerUrl = url;
   }
 }

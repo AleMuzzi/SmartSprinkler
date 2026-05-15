@@ -25,12 +25,6 @@ class _SettingsPageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       body: Center(
         child: Padding(
@@ -54,7 +48,6 @@ class _SettingsPageState extends State<HomePage> {
                 alignment: Alignment.bottomCenter,
                 child: Column(
                   children: [
-                    // add a dropdown to select the plant to irrigate
                     DropdownButton<Target>(
                       value: selectedPlant,
                       hint: const Text('Scegli una pianta'),
@@ -71,19 +64,34 @@ class _SettingsPageState extends State<HomePage> {
                         });
                       },
                     ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text("Log to Bayesian server"),
+                        const SizedBox(width: 8),
+                        Switch(
+                          value: widget.viewModel.notifyBayesian,
+                          onChanged: (value) {
+                            setState(() {
+                              widget.viewModel.notifyBayesian = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 20),
-                    // add buttons to start and stop all zones
                     ElevatedButton(
                       onPressed: selectedPlant != null
                           ? () { widget.viewModel.startIrrigation(selectedPlant!); }
-                          : null, // disable button if no plant is selected
+                          : null,
                       child: const Text('Start Irrigation'),
                     ),
                     const SizedBox(height: 15),
                     ElevatedButton(
                       onPressed: selectedPlant != null
                           ? () { widget.viewModel.stopIrrigation(selectedPlant!); }
-                          : null, // disable button if no plant is selected
+                          : null,
                       child: const Text('Stop Irrigation'),
                     ),
                     const SizedBox(height: 60),

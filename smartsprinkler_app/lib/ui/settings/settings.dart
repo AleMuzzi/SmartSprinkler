@@ -15,11 +15,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    late final TextEditingController controller = TextEditingController(text: widget.viewModel.settings.apiUrl);
+    late final TextEditingController espController = TextEditingController(text: widget.viewModel.settings.apiUrl);
+    late final TextEditingController bayesController = TextEditingController(text: widget.viewModel.settings.bayesianUrl);
 
     return Scaffold(
       body: Center(
-        // I need to add settings here, such as an edit text for the sprinkler url
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
@@ -37,14 +37,26 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const SizedBox(height: 16),
                   TextField(
-                    controller: controller,
+                    controller: espController,
                     decoration: InputDecoration(
-                      labelText: "Sprinkler URL",
+                      labelText: "ESP Sprinkler URL",
                       hintText: "http://your-sprinkler.local",
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (value) {
                       widget.viewModel.settings.apiUrl = value;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: bayesController,
+                    decoration: InputDecoration(
+                      labelText: "Bayesian Server URL",
+                      hintText: "http://your-server.local:8080",
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      widget.viewModel.settings.bayesianUrl = value;
                     },
                   ),
                   const SizedBox(height: 20),
@@ -57,7 +69,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             widget.viewModel.settings.apiUrl = "http://192.168.1.10";
                           });
                         },
-                        child: const Text('🏠 Local'),
+                        child: const Text('🏠 Local ESP'),
                       ),
                       const SizedBox(height: 15),
                       ElevatedButton(
@@ -66,7 +78,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             widget.viewModel.settings.apiUrl = "http://sprinkler.casabrignuzzi.com.es";
                           });
                         },
-                        child: const Text('🛰️ Remote'),
+                        child: const Text('🛰️ Remote ESP'),
                       ),
                     ],
                   )
