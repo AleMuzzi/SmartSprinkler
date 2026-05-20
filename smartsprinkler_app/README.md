@@ -26,14 +26,14 @@ The Bayesian server URL is configured independently from the ESP URL, so the Bay
 ### `Command`
 
 ```dart
-Command(target: Target.PEPERONCINO, action: Action.START)
-// → {"action": "START", "target": "PEPERONCINO", "amount": 0}
+Command(target: Target.NAGA_MORICH, action: Action.START)
+// → {"action": "START", "target": "NAGA_MORICH", "amount": 0}
 ```
 
 | Enum | Values |
 |---|---|
 | `Action` | `STOP`, `START`, `DISPENSE_SPECIFIC_AMOUNT` |
-| `Target` | `PEPERONCINO`, `ROSMARINO` (add more to match firmware) |
+| `Target` | `NAGA_MORICH`, `ROSMARINO`, `HABANERO`, `CAROLINA_REAPER` |
 
 ### `Settings` (singleton)
 

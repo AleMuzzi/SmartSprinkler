@@ -32,8 +32,10 @@ private:
 class Target {
 public:
     enum Value {
-        PEPERONCINO = 0,
+        NAGA_MORICH = 0,
         ROSMARINO = 1,
+        HABANERO = 2,
+        CAROLINA_REAPER = 3,
     };
 
     Target() = default;

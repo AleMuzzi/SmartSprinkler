@@ -5,8 +5,10 @@ enum Action {
 }
 
 enum Target {
-  PEPERONCINO,
+  NAGA_MORICH,
   ROSMARINO,
+  HABANERO,
+  CAROLINA_REAPER,
 }
 
 class Command {

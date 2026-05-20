@@ -30,12 +30,12 @@ plants:
     threshold: 0.50       # Lower activation threshold so it waters proactively before midday heat
     watering_duration: 6  # Needs a deep soak to reach the bottom of the pot
 
-  peperoncino:
-    display_name: "Peperoncino"
-    esp_target: "PEPERONCINO"
-    base_need: 0.55       # Capsicum annuum; slightly more resilient than super-hots
-    threshold: 0.55       # Standard threshold
-    watering_duration: 5
+  naga_morich:
+    display_name: "Naga Morich"
+    esp_target: "NAGA_MORICH"
+    base_need: 0.68       # Capsicum chinense super-hot; thirsty like Carolina Reaper
+    threshold: 0.50       # Sensitive; water proactively before stress
+    watering_duration: 6
 
   carolina_reaper:
     display_name: "Carolina Reaper"

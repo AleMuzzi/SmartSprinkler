@@ -21,13 +21,16 @@
 #include "sensors/actuator.h"
 
 #include "sensors/camera.h"
-#include "sensors/sensor_soil_moisture.h"
 #include "sensors/temp_humidity_sensor.h"
 #include "services/CommandManager.h"
 #include "utils/hashtable_ext.h"
 
 #define PIN_PUMP_RELAY 12
-#define PIN_SOIL_MOISTURE_SENSOR 14
+#define PIN_VALVE_1 13
+#define PIN_VALVE_2 15
+#define PIN_VALVE_3 16
+
+#define FLOW_RATE_ML_PER_MIN 6000  // User must calibrate — default 6 L/min
 
 constexpr char ssid[15] = "Brignuzzi WiFi";
 constexpr char password[25] = "88uffleukticegscwrizaqrt"; // Enter WIFI Password
@@ -57,11 +60,23 @@ CommandManager command_manager;
 Hashtable<String, Route> routes;
 
 const Actuator water_pump(PIN_PUMP_RELAY);
-const SensorSoilMoisture soil_moisture_sensor(PIN_SOIL_MOISTURE_SENSOR);
+const Actuator valve_1(PIN_VALVE_1);
+const Actuator valve_2(PIN_VALVE_2);
+const Actuator valve_3(PIN_VALVE_3);
+
+Target::Value active_target = Target::NAGA_MORICH; // last selected target
+
+// Soil moisture from Arduino Nano (4 HW-390 sensors on A0–A3)
+int soil_moisture_raw[4] = {0, 0, 0, 0};
+bool nano_available = false;
+// soil_moisture (float) stores the average as percentage — used by /status for backward compatibility
 
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg);
+void plant_to_valves(Target::Value target);
+const char* target_to_string(Target::Value target);
+void request_soil_moistures();
 
 void setup_command_routes();
 
@@ -100,6 +115,14 @@ void setup() {
 
     pinMode(4, OUTPUT);
 
+    // Initialize valve relay pins (start closed)
+    pinMode(PIN_VALVE_1, OUTPUT);
+    pinMode(PIN_VALVE_2, OUTPUT);
+    pinMode(PIN_VALVE_3, OUTPUT);
+    digitalWrite(PIN_VALVE_1, LOW);
+    digitalWrite(PIN_VALVE_2, LOW);
+    digitalWrite(PIN_VALVE_3, LOW);
+
     // Start the display
     // u8g2.begin();
 
@@ -135,10 +158,15 @@ void loop() {
             Serial.println(air_humidity);
         }
 
-        // Update soil moisture
-        // soil_moisture = soil_moisture_sensor.getSoilMoisture();
-        // Serial.print("Soil Moisture: ");
-        // Serial.println(soil_moisture);
+        // Update soil moisture from Arduino Nano
+        request_soil_moistures();
+        if (nano_available) {
+            Serial.print("Soil moisture raw: ");
+            Serial.print(soil_moisture_raw[0]); Serial.print(", ");
+            Serial.print(soil_moisture_raw[1]); Serial.print(", ");
+            Serial.print(soil_moisture_raw[2]); Serial.print(", ");
+            Serial.println(soil_moisture_raw[3]);
+        }
         Serial.println("-------------------------------");
     }
 
@@ -194,6 +222,7 @@ void setup_command_routes() {
                     String error_msg;
                     if (process_command(curr_command, error_msg)) {
                         req->send(200, "application/json", R"({"status":"ok"})");
+                        return;
                     }
 
                     req->send(
@@ -214,6 +243,14 @@ void setup_command_routes() {
                     status.put("air_humidity", String(air_humidity, 2));
                     status.put("soil_moisture", String(soil_moisture, 2));
                     status.put("water_pump", water_pump.is_on() ? "on" : "off");
+                    status.put("valve_1", valve_1.is_on() ? "on" : "off");
+                    status.put("valve_2", valve_2.is_on() ? "on" : "off");
+                    status.put("valve_3", valve_3.is_on() ? "on" : "off");
+                    status.put("soil_moisture_0", String(soil_moisture_raw[0]));
+                    status.put("soil_moisture_1", String(soil_moisture_raw[1]));
+                    status.put("soil_moisture_2", String(soil_moisture_raw[2]));
+                    status.put("soil_moisture_3", String(soil_moisture_raw[3]));
+                    status.put("active_plant", water_pump.is_on() ? target_to_string(active_target) : "null");
 
                     req->send(
                         200,
@@ -260,29 +297,127 @@ void reply_invalid_payload(MongooseHttpServerRequest *req) {
     );
 }
 
+void plant_to_valves(const Target::Value target) {
+    switch (target) {
+        // V1 OFF → V2; V2 OFF → plant
+        case Target::HABANERO:
+            valve_1.switch_off();  // select V2 branch
+            valve_2.switch_off();  // select plant 0 on V2
+            valve_3.switch_off();  // V3 isolated, safe off
+            break;
+        case Target::NAGA_MORICH:
+            valve_1.switch_off();  // select V2 branch
+            valve_2.switch_on();   // select plant 1 on V2
+            valve_3.switch_off();  // V3 isolated, safe off
+            break;
+        // V1 ON → V3; V3 OFF → plant
+        case Target::CAROLINA_REAPER:
+            valve_1.switch_on();   // select V3 branch
+            valve_2.switch_off();  // V2 isolated, safe off
+            valve_3.switch_off();  // select plant 0 on V3
+            break;
+        case Target::ROSMARINO:
+            valve_1.switch_on();   // select V3 branch
+            valve_2.switch_off();  // V2 isolated, safe off
+            valve_3.switch_on();   // select plant 1 on V3
+            break;
+    }
+}
+
+const char* target_to_string(const Target::Value target) {
+    switch (target) {
+        case Target::HABANERO:      return "HABANERO";
+        case Target::NAGA_MORICH:   return "NAGA_MORICH";
+        case Target::CAROLINA_REAPER: return "CAROLINA_REAPER";
+        case Target::ROSMARINO:     return "ROSMARINO";
+    }
+    return "UNKNOWN";
+}
+
+void request_soil_moistures() {
+    // Flush any stale data in the RX buffer
+    while (Serial.available()) {
+        Serial.read();
+    }
+
+    // Send sample request to Nano
+    Serial.write('S');
+
+    // Read response with timeout
+    const unsigned long start = millis();
+    String response;
+    while (millis() - start < 100) {
+        if (Serial.available()) {
+            const char c = static_cast<char>(Serial.read());
+            if (c == '\n') break;
+            response += c;
+        }
+    }
+
+    if (response.length() == 0) {
+        nano_available = false;
+        return;
+    }
+
+    // Parse "val0,val1,val2,val3"
+    int vals[4] = {0};
+    int idx = 0;
+    int pos = 0;
+    for (int i = 0; i <= response.length() && idx < 4; i++) {
+        if (i == response.length() || response.charAt(i) == ',') {
+            vals[idx++] = response.substring(pos, i).toInt();
+            pos = i + 1;
+        }
+    }
+
+    if (idx == 4) {
+        soil_moisture_raw[0] = vals[0];
+        soil_moisture_raw[1] = vals[1];
+        soil_moisture_raw[2] = vals[2];
+        soil_moisture_raw[3] = vals[3];
+        // Average raw → percentage (same mapping as old SensorSoilMoisture: 1023→0%, 0→100%)
+        const float avg_raw = (vals[0] + vals[1] + vals[2] + vals[3]) / 4.0f;
+        soil_moisture = constrain(map(static_cast<int>(avg_raw), 1023, 0, 0, 100), 0, 100);
+        nano_available = true;
+    }
+}
+
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg) {
     // Process the received command
     switch (command->get_action()) {
         case Action::STOP:
-            // Stop dispensing
             Serial.println("Stopping dispensing.");
             water_pump.switch_off();
+            valve_1.switch_off();
+            valve_2.switch_off();
+            valve_3.switch_off();
             break;
         case Action::START:
-            // Start dispensing
             Serial.println("Starting dispensing.");
+            active_target = command->get_target();
+            plant_to_valves(active_target);
+            delay(500); // allow valves to fully open
             water_pump.switch_on();
             break;
         case Action::DISPENSE_SPECIFIC_AMOUNT:
-            // Dispense specific amount
+        {
+            active_target = command->get_target();
+            plant_to_valves(active_target);
+            delay(500);
+            water_pump.switch_on();
             Serial.print("Dispensing ");
             Serial.print(command->get_amount());
             Serial.println(" ml.");
-            // TODO: Implement logic to dispense the specific amount
-            error_msg = "Command not implemented yet.";
-            Serial.println(error_msg);
-            return false;
+            const unsigned long duration_ms = static_cast<unsigned long>(
+                (static_cast<float>(command->get_amount()) / FLOW_RATE_ML_PER_MIN) * 60.0f * 1000.0f
+            );
+            delay(duration_ms);
+            water_pump.switch_off();
+            valve_1.switch_off();
+            valve_2.switch_off();
+            valve_3.switch_off();
             break;
+        }
         default:
             error_msg = "Unknown command: " + String(command->get_action());
             Serial.println(error_msg);

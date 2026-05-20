@@ -7,7 +7,7 @@ from pgmpy.models import DiscreteBayesianNetwork as BayesianNetwork
 
 logger = logging.getLogger(__name__)
 
-CHILI_PLANTS = {"habanero", "peperoncino", "carolina_reaper"}
+CHILI_PLANTS = {"habanero", "naga_morich", "carolina_reaper"}
 
 
 class SmartSprinklerBN:

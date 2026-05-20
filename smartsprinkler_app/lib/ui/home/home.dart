@@ -19,7 +19,7 @@ class HomePage extends PageWidget {
 }
 
 class _SettingsPageState extends State<HomePage> {
-  Target? selectedPlant = Target.PEPERONCINO;
+  Target? selectedPlant = Target.NAGA_MORICH;
   Sprinkler sprinkler = Sprinkler();
   SprinklerDataComponentViewModel sprinklerDataComponentViewModel = SprinklerDataComponentViewModel();
 

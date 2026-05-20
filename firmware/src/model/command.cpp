@@ -25,17 +25,25 @@ Action Action::from_string(const char* str, bool& success) {
 }
 
 Target Target::from_string(const char* str, bool& success) {
-    if (strcmp(str, "PEPERONCINO") == 0) {
+    if (strcmp(str, "NAGA_MORICH") == 0) {
         success = true;
-        return PEPERONCINO;
+        return NAGA_MORICH;
     }
     if (strcmp(str, "ROSMARINO") == 0) {
         success = true;
         return ROSMARINO;
     }
+    if (strcmp(str, "HABANERO") == 0) {
+        success = true;
+        return HABANERO;
+    }
+    if (strcmp(str, "CAROLINA_REAPER") == 0) {
+        success = true;
+        return CAROLINA_REAPER;
+    }
 
     success = false;
-    return PEPERONCINO;
+    return NAGA_MORICH;
 }
 
 std::shared_ptr<ICanBeDeserialized> Command::from_json(const char *json_str, DeserializationError& error, String &error_msg) {

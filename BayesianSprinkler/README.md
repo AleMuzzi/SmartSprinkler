@@ -22,7 +22,7 @@ graph TD
 
     subgraph "Layer 2 — Decision (3×4×3×2 = 72 evals)"
         SM[SoilMoisture<br/>dry / moist / wet]
-        PT[PlantType<br/>habanero / peperoncino<br/>carolina_reaper / rosmarino]
+        PT[PlantType<br/>habanero / naga_morich<br/>carolina_reaper / rosmarino]
         RF[RainForecast<br/>yes / no]
         NW[NeedWater<br/>yes / no]
         ER --> NW
@@ -95,7 +95,7 @@ graph TB
 | `AirHumidity` | `low` (<30%), `medium` (30-70%), `high` (>70%) | DHT22 via ESP `/status` |
 | `CloudCover` | `clear` (<50%), `cloudy` (≥50%) | Open-Meteo API (`current.cloud_cover`) |
 | `SoilMoisture` | `dry` (0-30%), `moist` (30-70%), `wet` (70-100%) | HW-390 via ESP `/status` |
-| `PlantType` | `habanero`, `peperoncino`, `carolina_reaper`, `rosmarino` | Configured in `config.yaml` |
+| `PlantType` | `habanero`, `naga_morich`, `carolina_reaper`, `rosmarino` | Configured in `config.yaml` |
 | `RainForecast` | `yes` (precip > 0 mm), `no` | Open-Meteo API (`daily.precipitation_sum`) |
 | `EvaporationRisk` | `low`, `med`, `high` | Inferred from temperature, humidity, cloud cover |
 | `NeedWater` | `yes`, `no` | Inferred — the decision variable |
@@ -128,7 +128,7 @@ A second weighted score combines evaporation risk, soil moisture, and plant base
 score  =  base_need × 0.35 + evap_score × 0.25 + moisture_score × 0.40
 
 if rain_forecast == "yes":
-    if soil == "dry" and plant is chili (habanero/peperoncino/carolina_reaper):
+    if soil == "dry" and plant is chili (habanero/naga_morich/carolina_reaper):
         score ×= 0.4       # moderate penalty — still water thirsty plants
     else:
         score ×= 0.05      # heavy penalty — rain is coming
@@ -137,11 +137,11 @@ if rain_forecast == "yes":
 The decision threshold per plant is set in `config.yaml`:
 
 | Plant | `base_need` | `threshold` | Behaviour |
-|---|---|---|---|
-| Habanero | 0.55 | 0.55 | Standard moisture-loving pepper |
-| Peperoncino | 0.50 | 0.55 | Same as Habanero |
-| Carolina Reaper | 0.55 | 0.50 | Most water-sensitive, lowest threshold |
-| Rosmarino | 0.30 | 0.60 | Drought-tolerant, waters sparingly |
+|---|---|---|---|---|
+| Habanero | 0.65 | 0.50 | Capsicum chinense, thirsty |
+| Naga Morich | 0.68 | 0.50 | Capsicum chinense super-hot, thirsty |
+| Carolina Reaper | 0.70 | 0.48 | Most water-sensitive, lowest threshold |
+| Rosmarino | 0.20 | 0.80 | Drought-tolerant, waters sparingly |
 
 ## Usage
 
