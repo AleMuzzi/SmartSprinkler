@@ -75,10 +75,13 @@ std::shared_ptr<ICanBeDeserialized> Command::from_json(const char *json_str, Des
         return nullptr;
     }
 
+    const bool force = doc["force"] | false;
+
     return std::make_shared<Command>(
         action,
         target,
-        doc["amount"].as<int>()
+        doc["amount"].as<int>(),
+        force
         );
 }
 

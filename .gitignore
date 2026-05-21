@@ -68,6 +68,15 @@ venv/
 *.swp
 *.swo
 
+# PlatformIO build output
+.pio/
+.pioenvs/
+.piolibdeps/
+.pioinit
+
+# Flutter build output
+build/
+
 # OS
 .DS_Store
 Thumbs.db

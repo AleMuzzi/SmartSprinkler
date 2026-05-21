@@ -112,6 +112,14 @@ def _register_routes(app: FastAPI):
                 need_water=need,
             )
 
+        # Check water level before watering
+        if status.get("water_low_alert") == "on":
+            logger.warning("Water low alert — blocked watering for %s", req.plant_type)
+            raise HTTPException(
+                503,
+                f"Water level low — blocked. Use force=true to override."
+            )
+
         logger.info("Manual water triggered for %s — logging snapshot", req.plant_type)
         state.esp.start_watering(cfg["esp_target"])
         time.sleep(cfg["watering_duration"])
@@ -189,9 +197,11 @@ def _inference_cycle(st: AppState):
                 "  ✓ WATERING" if will_water else "",
             )
 
-            if will_water:
+            if will_water and status.get("water_low_alert") != "on":
                 st.esp.start_watering(cfg["esp_target"])
                 time.sleep(cfg["watering_duration"])
                 st.esp.stop_watering(cfg["esp_target"])
+            elif will_water:
+                logger.info("  Skipped — water low alert active")
     except Exception:
         logger.exception("Inference cycle failed")

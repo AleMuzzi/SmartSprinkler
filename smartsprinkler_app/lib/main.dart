@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:smartsprinkler_app/data/settings.dart';
 import 'package:smartsprinkler_app/ui/home/home.dart';
 import 'package:smartsprinkler_app/ui/home/home_viewmodel.dart';
 import 'package:smartsprinkler_app/ui/page.dart';

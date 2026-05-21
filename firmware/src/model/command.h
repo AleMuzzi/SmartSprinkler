@@ -52,14 +52,15 @@ private:
 class Command final : public ICanBeDeserialized {
 public:
 
-    Command(const Action action, const Target target, const int amount = 0)
-        : action(action), target(target), amount(amount) {}
+    Command(const Action action, const Target target, const int amount = 0, const bool force = false)
+        : action(action), target(target), amount(amount), force(force) {}
 
     // region Getters
 
     Action::Value get_action() const { return this->action.get(); }
     Target::Value get_target() const { return this->target.get(); }
     int get_amount() const { return this->amount; }
+    bool get_force() const { return this->force; }
 
     // endregion
 
@@ -70,6 +71,7 @@ private:
     Action action;
     Target target;  // target plant
     int amount = 0; // in milliliters (only valid if action is DISPENSE_SPECIFIC_AMOUNT)
+    bool force = false; // bypass water-low guard
 };
 
 

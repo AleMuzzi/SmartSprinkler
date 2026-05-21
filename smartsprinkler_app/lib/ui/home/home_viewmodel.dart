@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
-import 'package:flutter/material.dart' hide Action;
 import 'package:http/http.dart' as http;
 import 'package:smartsprinkler_app/model/command.dart';
 import 'package:smartsprinkler_app/data/sprinkler.dart';
@@ -17,10 +16,10 @@ class HomePageViewModel {
 
   HomePageViewModel();
 
-  Future<void> commandIrrigation(Target target, Action action) async {
+  Future<void> commandIrrigation(Target target, Action action, {bool force = false}) async {
     final response = await http.post(
         Uri.parse("${settings.apiUrl}/command"),
-        body: Command(target: target, action: action).toJson()
+        body: Command(target: target, action: action, force: force).toJson()
     );
 
     if (response.statusCode == 200) {
@@ -29,11 +28,25 @@ class HomePageViewModel {
       try {
         Map<String, dynamic> body = {};
         body = response.body.isNotEmpty ?  Map<String, dynamic>.from(jsonDecode(response.body)) : {};
-        await Fluttertoast.showToast(msg: "Error ${response.statusCode}: ${body["message"]}", fontSize: 16.0, toastLength: Toast.LENGTH_LONG);
+        final msg = body["message"] ?? "unknown error";
+        if (msg.toString().contains("blocked")) {
+          Sprinkler().blockedAmountMl = 0;
+          await Fluttertoast.showToast(
+            msg: "⛔ Water blocked — tap alert for details",
+            fontSize: 16.0,
+            toastLength: Toast.LENGTH_LONG,
+          );
+        } else {
+          await Fluttertoast.showToast(msg: "Error ${response.statusCode}: $msg", fontSize: 16.0, toastLength: Toast.LENGTH_LONG);
+        }
       } catch (e) {
         await Fluttertoast.showToast(msg: "Error ${response.statusCode}: ${response.body}", fontSize: 16.0, toastLength: Toast.LENGTH_LONG);
       }
     }
+  }
+
+  Future<void> forceIrrigation(Target target, Action action) async {
+    return commandIrrigation(target, action, force: true);
   }
 
   Future<void> startIrrigation(Target target) async {

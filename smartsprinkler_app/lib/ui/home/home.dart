@@ -1,9 +1,8 @@
-import 'dart:collection';
-
 import 'package:flutter/material.dart';
 import 'package:smartsprinkler_app/data/sprinkler.dart';
 import 'package:smartsprinkler_app/model/command.dart';
 import 'package:smartsprinkler_app/ui/home/home_viewmodel.dart';
+import 'package:smartsprinkler_app/ui/home/low_water_alert_page.dart';
 import 'package:smartsprinkler_app/ui/home/sprinkler_data_component.dart';
 import 'package:smartsprinkler_app/ui/home/sprinkler_data_component_viewmodel.dart';
 
@@ -24,6 +23,12 @@ class _SettingsPageState extends State<HomePage> {
   SprinklerDataComponentViewModel sprinklerDataComponentViewModel = SprinklerDataComponentViewModel();
 
   @override
+  void dispose() {
+    sprinklerDataComponentViewModel.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
@@ -33,6 +38,36 @@ class _SettingsPageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
               const SizedBox(height: 20),
+              ListenableBuilder(
+                listenable: sprinkler,
+                builder: (context, _) {
+                  if (!sprinkler.waterLowAlert) return const SizedBox.shrink();
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade700),
+                    ),
+                    child: InkWell(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LowWaterAlertPage()),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text("⚠️ Water tank low — irrigation disabled", style: TextStyle(color: Colors.orange.shade900))),
+                          const Icon(Icons.chevron_right, color: Colors.orange),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
               Container(
                 alignment: Alignment.center,
                 child: ListenableBuilder(
@@ -44,7 +79,7 @@ class _SettingsPageState extends State<HomePage> {
               ),
               Container(
                 padding: const EdgeInsets.only(bottom: 50.0),
-                color: Theme.of(context).colorScheme.surface.withOpacity(0.5),
+                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.5),
                 alignment: Alignment.bottomCenter,
                 child: Column(
                   children: [

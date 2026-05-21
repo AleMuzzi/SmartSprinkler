@@ -77,6 +77,10 @@ bool ads_available = false;
 Adafruit_ADS1115 ads;
 TwoWire adsWire(1);
 
+// Water level alert — no sensor yet, always OK (false)
+bool water_low_alert = false;
+int blocked_amount_ml = 0;
+
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg);
@@ -261,6 +265,8 @@ void setup_command_routes() {
                     status.put("soil_moisture_1", String(soil_moisture_raw[1]));
                     status.put("soil_moisture_2", String(soil_moisture_raw[2]));
                     status.put("soil_moisture_3", String(soil_moisture_raw[3]));
+                    status.put("water_low_alert", water_low_alert ? "on" : "off");
+                    status.put("blocked_amount_ml", String(blocked_amount_ml));
                     status.put("active_plant", water_pump.is_on() ? target_to_string(active_target) : "null");
 
                     req->send(
@@ -369,14 +375,26 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
             valve_3.switch_off();
             break;
         case Action::START:
+            if (water_low_alert && !command->get_force()) {
+                error_msg = "Water level low — watering blocked. Use force=true to override.";
+                Serial.println(error_msg);
+                blocked_amount_ml = 0;
+                return false;
+            }
             Serial.println("Starting dispensing.");
             active_target = command->get_target();
             plant_to_valves(active_target);
-            delay(500); // allow valves to fully open
+            delay(500);
             water_pump.switch_on();
             break;
         case Action::DISPENSE_SPECIFIC_AMOUNT:
         {
+            if (water_low_alert && !command->get_force()) {
+                error_msg = "Water level low — blocked " + String(command->get_amount()) + " ml.";
+                Serial.println(error_msg);
+                blocked_amount_ml = command->get_amount();
+                return false;
+            }
             active_target = command->get_target();
             plant_to_valves(active_target);
             delay(500);
