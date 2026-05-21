@@ -86,16 +86,18 @@ class _SettingsPageState extends State<HomePage> {
                   },
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.only(bottom: 50.0),
-                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.5),
-                alignment: Alignment.bottomCenter,
-                child: Column(
-                  children: [
-                    DropdownButton<Target>(
-                      value: selectedPlant,
-                      hint: const Text('Scegli una pianta'),
-                      isExpanded: true,
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.only(bottom: 50.0),
+                  color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.5),
+                  alignment: Alignment.bottomCenter,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButton<Target>(
+                        value: selectedPlant,
+                        hint: const Text('Scegli una pianta'),
+                        isExpanded: true,
                       items: Target.values.map((Target target) {
                         return DropdownMenuItem<Target>(
                           value: target,
@@ -139,8 +141,9 @@ class _SettingsPageState extends State<HomePage> {
                       child: const Text('Stop Irrigation'),
                     ),
                     const SizedBox(height: 60),
-                  ],
-                )
+                    ],
+                  ),
+                ),
               ),
             ],
           ),

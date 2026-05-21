@@ -125,7 +125,7 @@ void setup() {
 
     TempHumiditySensor::init();
 
-    rotary_servo.attach(PIN_ROTARY_SERVO, SERVO_MIN_US, SERVO_MAX_US, SERVOFreq);
+    rotary_servo.attach(PIN_ROTARY_SERVO, SERVO_MIN_US, SERVO_MAX_US);
     Serial.println("Rotary servo attached (GPIO 13)");
 
     calibrate_rotary();
