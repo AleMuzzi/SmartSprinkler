@@ -1,115 +1,74 @@
 import 'package:flutter/material.dart';
-import 'package:smartsprinkler_app/ui/home/home.dart';
-import 'package:smartsprinkler_app/ui/home/home_viewmodel.dart';
-import 'package:smartsprinkler_app/ui/page.dart';
-import 'package:smartsprinkler_app/ui/settings/settings.dart';
-import 'package:smartsprinkler_app/ui/settings/settings_viewmodel.dart';
+
+import 'ui/dashboard/dashboard_view.dart';
+import 'ui/dashboard/system_control_view.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const SmartSprinklerApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class SmartSprinklerApp extends StatelessWidget {
+  const SmartSprinklerApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SmartSprinkler',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4CAF50)),
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
       ),
-      home: const HomeWidget(title: 'Smart Sprinkler'),
+      home: const MainNavigationPage(),
     );
   }
 }
 
-class HomeWidget extends StatefulWidget {
-  const HomeWidget({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class MainNavigationPage extends StatefulWidget {
+  const MainNavigationPage({super.key});
 
   @override
-  State<HomeWidget> createState() => _HomeWidgetState();
+  State<MainNavigationPage> createState() => _MainNavigationPageState();
 }
 
-final List<PageWidget> _pages = [
-  HomePage(viewModel: HomePageViewModel()),
-  SettingsPage(viewModel: SettingsPageViewModel()),
-];
+class _MainNavigationPageState extends State<MainNavigationPage> {
+  int _currentIndex = 0;
 
-int _selectedPageIndex = 0;
-class _HomeWidgetState extends State<HomeWidget> {
+  final List<Widget> _pages = const [
+    DashboardView(),
+    SystemControlView(),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(_pages[_selectedPageIndex].title),
-        centerTitle: true,
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
       ),
-      body: _pages[_selectedPageIndex],
-      // I want to crete a navigation menu
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: <Widget>[
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.green,
-              ),
-              child: Text(
-                  widget.title,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 30,
-                  )
-              ),
-            ),
-            ListTile(
-              title: Text('🏠 Home', style: TextStyle(fontSize: 24)),
-              onTap: () {
-                setState(() {
-                  _selectedPageIndex = 0;
-                });
-                Navigator.pop(context);
-              },
-
-            ),
-            ListTile(
-              title: Text('⚙️ Settings', style: TextStyle(fontSize: 24)),
-              onTap: () {
-                setState(() {
-                  _selectedPageIndex = 1;
-                });
-                Navigator.pop(context);
-              },
-            ),
-          ]),
-      )
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        backgroundColor: Colors.white,
+        indicatorColor: const Color(0xFF4CAF50).withValues(alpha: 0.2),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard, color: Color(0xFF4CAF50)),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings, color: Color(0xFF4CAF50)),
+            label: 'System',
+          ),
+        ],
+      ),
     );
   }
 }
