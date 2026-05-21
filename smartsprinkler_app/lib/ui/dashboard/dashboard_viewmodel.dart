@@ -44,25 +44,25 @@ class DashboardViewModel extends ChangeNotifier {
       PlantData(
         id: 'habanero',
         displayName: 'Habanero',
-        imageUrl: 'https://images.unsplash.com/photo-1583116383523-d5c4c1e1eb04?w=400',
+        imageUrl: 'assets/images/habanero.jpg',
         target: Target.HABANERO,
       ),
       PlantData(
         id: 'naga_morich',
         displayName: 'Naga Morich',
-        imageUrl: 'https://images.unsplash.com/photo-156aching',
+        imageUrl: 'assets/images/naga_morich.jpg',
         target: Target.NAGA_MORICH,
       ),
       PlantData(
         id: 'carolina_reaper',
         displayName: 'Carolina Reaper',
-        imageUrl: 'https://images.unsplash.com/photo-1583116383524-5c4c1e1eb029?w=400',
+        imageUrl: 'assets/images/carolina_reaper.jpg',
         target: Target.CAROLINA_REAPER,
       ),
       PlantData(
         id: 'rosmarino',
         displayName: 'Rosmarino',
-        imageUrl: 'https://images.unsplash.com/photo-1597854819025-e6e83f1a4a5c?w=400',
+        imageUrl: 'assets/images/rosmarino.jpg',
         target: Target.ROSMARINO,
       ),
     ];

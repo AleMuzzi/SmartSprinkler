@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_gauges/gauges.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../data/models/plant_data.dart';
 import '../../../data/models/weather_data.dart';
@@ -354,14 +353,10 @@ class _PlantCard extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: plant.imageUrl.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: plant.imageUrl,
+                    ? Image.asset(
+                        plant.imageUrl,
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
-                          color: const Color(0xFFE8EDF2),
-                          child: const Icon(Icons.eco, size: 48, color: Color(0xFFA0AEC0)),
-                        ),
-                        errorWidget: (_, __, ___) => Container(
+                        errorBuilder: (_, __, ___) => Container(
                           color: const Color(0xFFE8EDF2),
                           child: const Icon(Icons.eco, size: 48, color: Color(0xFFA0AEC0)),
                         ),
