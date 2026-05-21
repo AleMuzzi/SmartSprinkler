@@ -73,7 +73,16 @@ class _SettingsPageState extends State<HomePage> {
                 child: ListenableBuilder(
                   listenable: sprinkler,
                   builder: (BuildContext context, Widget? child) {
-                    return SprinklerDataComponent(viewModel: sprinklerDataComponentViewModel);
+                    return Column(
+                      children: [
+                        _RotarySelectorStatus(
+                          position: sprinkler.rotaryPosition,
+                          activePlant: sprinkler.waterPump == 'on' ? sprinkler.activePlant : null,
+                        ),
+                        const SizedBox(height: 16),
+                        SprinklerDataComponent(viewModel: sprinklerDataComponentViewModel),
+                      ],
+                    );
                   },
                 ),
               ),
@@ -138,5 +147,85 @@ class _SettingsPageState extends State<HomePage> {
         ),
       ),
     );
+  }
+}
+
+class _RotarySelectorStatus extends StatelessWidget {
+  final int? position;
+  final String? activePlant;
+
+  const _RotarySelectorStatus({this.position, this.activePlant});
+
+  @override
+  Widget build(BuildContext context) {
+    if (position == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.warning_amber, color: Colors.grey, size: 20),
+            SizedBox(width: 8),
+            Text("Rotary selector: uncalibrated", style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    final labels = ['Habanero', 'Naga Morich', 'Carolina Reaper', 'Rosmarino'];
+    final currentLabel = activePlant != null ? _plantFromTarget(activePlant!) : 'Idle';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.rotate_right, color: Colors.blue.shade700, size: 20),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Rotary Selector", style: TextStyle(color: Colors.blue.shade900, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text("Pos $position · ${labels[position!.clamp(0, 3)]}", style: TextStyle(color: Colors.blue.shade700, fontSize: 14)),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: activePlant != null ? Colors.green.shade100 : Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              activePlant != null ? currentLabel : 'Idle',
+              style: TextStyle(
+                color: activePlant != null ? Colors.green.shade800 : Colors.grey.shade600,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _plantFromTarget(String target) {
+    switch (target) {
+      case 'HABANERO': return 'Habanero';
+      case 'NAGA_MORICH': return 'Naga Morich';
+      case 'CAROLINA_REAPER': return 'Carolina Reaper';
+      case 'ROSMARINO': return 'Rosmarino';
+      default: return target;
+    }
   }
 }

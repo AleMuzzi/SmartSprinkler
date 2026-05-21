@@ -5,7 +5,8 @@ Flutter app for manual irrigation control and real-time sensor monitoring.
 ## Features
 
 - **Sensor dashboard** — polls `GET /status` from the ESP every 2s and displays temperature, humidity, soil moisture, and pump state
-- **Plant dropdown** — select which plant to irrigate
+- **Rotary selector status** — shows current servo position (0–3) and active plant
+- **Plant dropdown** — select which plant to irrigate (maps to servo position)
 - **Start / Stop irrigation** — sends `POST /command` to the ESP with the selected plant and action
 - **Bayesian routing toggle** — when ON, watering is routed through the BayesianSprinkler server which logs the event and then triggers the ESP; when OFF, the command goes directly to the ESP
 - **Settings page** — configure both the ESP URL and the Bayesian server URL
@@ -20,6 +21,19 @@ Toggle OFF →  POST /command directly to ESP  →  no logging, no Bayesian invo
 ```
 
 The Bayesian server URL is configured independently from the ESP URL, so the Bayesian server can run on a different machine (e.g., a local server or Raspberry Pi).
+
+## Rotary Selector — Plant Mapping
+
+An SG90 servo drives a 3D-printed water path selector (Instructables: *Water Path Selector*) to direct water from a single pump output to one of 4 plant drip lines. Each servo position (0–3) corresponds to a 15° step:
+
+| Plant            | Position | Angle |
+|------------------|----------|-------|
+| Habanero        | 0        | 0°    |
+| Naga Morich     | 1        | 15°   |
+| Carolina Reaper | 2        | 30°   |
+| Rosmarino       | 3        | 45°   |
+
+On ESP startup, the servo runs a calibration sweep to verify all 4 positions are reachable. If any position fails, `/status` reports `rotary_position: "uncalibrated"`.
 
 ## Model
 

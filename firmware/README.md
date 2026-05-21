@@ -1,84 +1,75 @@
 # SmartSprinkler — Firmware
 
-PlatformIO project for the ESP32-CAM board that controls the irrigation pump, routes water via 3-way solenoid valves to 4 plants, and exposes sensor readings via HTTP.
+PlatformIO project for the ESP32-CAM board that controls the irrigation pump, routes water via a rotary selector (SG90 servo) to 4 plants, and exposes sensor readings via HTTP.
 
 ## Hardware
 
 ### Pinout
 
-| Component             | GPIO                                                     | Notes                                 |
-|-----------------------|----------------------------------------------------------|---------------------------------------|
-| Camera (AI-Thinker)   | 0, 5, 18, 19, 21, 22, 23, 25, 26, 27, 32, 34, 35, 36, 39 | ESP32-CAM fixed pinout                |
-| DHT22 (temp/humidity) | 2                                                        |                                       |
-| Water pump relay      | 12                                                       | Active HIGH                           |
-| Valve relay 1 (LSB)   | 13                                                       | 3-way 2-position solenoid             |
-| Valve relay 2         | 15                                                       | 3-way 2-position solenoid             |
-| Valve relay 3 (MSB)   | 16                                                       | 3-way 2-position solenoid             |
-| ADS1115 SCL           | 4                                                        | Software I2C (camera LED repurposed)  |
-| ADS1115 SDA           | 14                                                       | Software I2C                          |
+| Component             | GPIO       | Notes                                              |
+|-----------------------|------------|----------------------------------------------------|
+| Camera (AI-Thinker)   | 0, 5, 18, 19, 21, 22, 23, 25, 26, 27, 32, 34, 35, 36, 39 | ESP32-CAM fixed pinout  |
+| DHT22 (temp/humidity) | 2          |                                                    |
+| Water pump relay      | 12         | Active HIGH                                        |
+| SG90 rotary servo     | 13         | PWM signal (50Hz, 500–2500 µs pulse width)        |
+| ADS1115 SCL          | 4          | Software I2C (camera LED repurposed)                |
+| ADS1115 SDA          | 14         | Software I2C                                       |
 
-### Valve-to-Plant Mapping
+> **GPIO 15 and 16 are free** — previously used for valve relays 2 and 3.
 
-3 valves form a binary cascade selecting 1 of 4 outputs:
+### Rotary Selector — Plant Mapping
 
-| Plant           | V1 (GPIO13) | V2 (GPIO15) | V3 (GPIO16) | Path          |
-|-----------------|-------------|-------------|-------------|---------------|
-| Habanero        | OFF         | OFF         | OFF         | V1→V2→plant 0 |
-| Naga Morich     | OFF         | ON          | OFF         | V1→V2→plant 1 |
-| Carolina Reaper | ON          | OFF         | OFF         | V1→V3→plant 0 |
-| Rosmarino       | ON          | OFF         | ON          | V1→V3→plant 1 |
+The SG90 servo rotates a 3D-printed water path selector (Instructables: *Water Path Selector*) to direct water from a single input to one of 4 output ports. Each output connects to a different plant's drip line.
 
-V1 selects which second-level valve (V2 or V3) receives water; the selected valve then routes to one of its 2 plants. The non-selected valve is kept OFF since no water reaches its branch. Plumbing: common water input → V1 input; V1 OFF output → V2 input; V1 ON output → V3 input; each V2/V3 output → one plant's drip line.
+The servo position (angle) selects the active output:
 
-### ADS1115 — 4-Channel 16-bit Soil Moisture ADC
+| Plant            | Position | Angle (15° step) |
+|------------------|----------|-------------------|
+| Habanero        | 0        | 0°               |
+| Naga Morich     | 1        | 15°              |
+| Carolina Reaper | 2        | 30°              |
+| Rosmarino       | 3        | 45°              |
+
+The step angle (`ROTARY_DELTA_DEG = 15.0°`) can be adjusted in `src/esp32/main.cpp` once the physical positioning is calibrated. After moving to a position, the servo holds that position indefinitely (no power draw after reaching target).
+
+### Startup Calibration
+
+On boot, the firmware runs a calibration sweep: it visits each position sequentially, waits 800 ms, reads back the actual pulse width, and verifies the servo reached the target within ±100 µs tolerance. If any position fails, `rotary_position` in `/status` reports `"uncalibrated"` and the system falls back to software-only position tracking. Adjust `ROTARY_DELTA_DEG` if the servo doesn't reach all positions accurately.
+
+## ADS1115 — 4-Channel 16-bit Soil Moisture ADC
 
 The ESP32-CAM has no free GPIOs for extra ADCs and its ADC2 conflicts with WiFi.
 An external ADS1115 (I2C, 4-channel, 16-bit) provides clean isolated readings via software I2C on GPIO 14 (SDA) and GPIO 4 (SCL, camera LED repurposed).
 
 #### Wiring
 
-| ADS1115 | ESP32-CAM       | Sensor        |
-|---------|-----------------|---------------|
-| VDD     | 3.3V            |               |
-| GND     | GND             |               |
-| SCL     | GPIO 4          | Camera LED flash repurposed as I2C clock |
-| SDA     | GPIO 14         |                                               |
-| AIN0    |                 | HW-390 #1 (Habanero)      |
-| AIN1    |                 | HW-390 #2 (Naga Morich)   |
-| AIN2    |                 | HW-390 #3 (Carolina R.)   |
-| AIN3    |                 | HW-390 #4 (Rosmarino)     |
+| ADS1115 | ESP32-CAM     | Sensor             |
+|---------|---------------|--------------------|
+| VDD     | 3.3V         |                    |
+| GND     | GND           |                    |
+| SCL     | GPIO 4        | Camera LED flash repurposed as I2C clock |
+| SDA     | GPIO 14       |                    |
+| AIN0    |               | HW-390 #1 (Habanero)       |
+| AIN1    |               | HW-390 #2 (Naga Morich)    |
+| AIN2    |               | HW-390 #3 (Carolina Reaper) |
+| AIN3    |               | HW-390 #4 (Rosmarino)      |
 
 GPIO 14 is used as digital I2C data (not analog), so the ADC2 WiFi conflict does not apply.
 GPIO 4 (camera LED flash) is sacrificed because no free GPIOs remain on the ESP32-CAM.
 
 #### Optional: AMS1117 for clean 3.3V power
 
-For the lowest noise on ADC readings, power the ADS1115 and HW-390 sensors from an external AMS1117 5→3.3V regulator instead of the ESP32-CAM's onboard regulator:
+For the lowest noise on ADC readings, power the ADS1115 and HW-390 sensors from an external AMS1117 5→3.3V regulator:
 
 ```
 5V rail → AMS1117 VIN → 3.3V → ADS1115 VDD + HW-390 VCC
 ```
 
-#### Sensor mapping in `/status`
-
-Each ADS1115 channel appears as a separate field in the `/status` response:
-
-```json
-{
-    "soil_moisture_0": "412",
-    "soil_moisture_1": "380",
-    "soil_moisture_2": "501",
-    "soil_moisture_3": "290"
-}
-```
-
-The legacy `soil_moisture` field still reports the average percentage (map: 26400→0%, 0→100%) for backward compatibility with the Bayesian server.
-
 ## API endpoints (Mongoose, port 80)
 
 ### `GET /status`
 
-Returns current sensor readings, valve states, and active plant:
+Returns current sensor readings, rotary selector position, and active plant:
 
 ```json
 {
@@ -91,32 +82,35 @@ Returns current sensor readings, valve states, and active plant:
     "soil_moisture_2": "501",
     "soil_moisture_3": "290",
     "water_pump": "off",
-    "valve_1": "off",
-    "valve_2": "off",
-    "valve_3": "off",
+    "rotary_position": "1",
+    "water_low_alert": "off",
+    "blocked_amount_ml": "0",
     "active_plant": "null"
 }
 ```
 
+`rotary_position` is `0`–`3` (calibrated) or `"uncalibrated"` (calibration failed).
 `active_plant` contains the target name (e.g. `"NAGA_MORICH"`) when the pump is running, `"null"` when idle.
 
 ### `POST /command`
 
-Controls the pump and valve routing:
-
 ```json
-{"action": "START", "target": "NAGA_MORICH", "amount": 0}
-{"action": "STOP",  "target": "NAGA_MORICH", "amount": 0}
+{"action": "START", "target": "NAGA_MORICH"}
+{"action": "STOP",  "target": "NAGA_MORICH"}
 {"action": "DISPENSE_SPECIFIC_AMOUNT", "target": "HABANERO", "amount": 500}
+{"action": "START", "target": "ROSMARINO", "force": true}
 ```
 
-| Field | Values |
-|---|---|
-| `action` | `START`, `STOP`, `DISPENSE_SPECIFIC_AMOUNT` |
-| `target` | `NAGA_MORICH`, `ROSMARINO`, `HABANERO`, `CAROLINA_REAPER` |
-| `amount` | ml (only for `DISPENSE_SPECIFIC_AMOUNT`) |
+| Field  | Values                                              |
+|--------|-----------------------------------------------------|
+| `action`  | `START`, `STOP`, `DISPENSE_SPECIFIC_AMOUNT`  |
+| `target`   | `NAGA_MORICH`, `ROSMARINO`, `HABANERO`, `CAROLINA_REAPER` |
+| `amount`   | ml (only for `DISPENSE_SPECIFIC_AMOUNT`)      |
+| `force`    | `true` to bypass water-low alert (optional, default `false`) |
 
-`DISPENSE_SPECIFIC_AMOUNT` opens the valve for the selected target, turns on the pump, waits `amount / FLOW_RATE_ML_PER_MIN * 60` seconds, then stops the pump and closes the valve.
+`DISPENSE_SPECIFIC_AMOUNT` moves the servo to the selected plant's position, turns on the pump, waits `amount / FLOW_RATE_ML_PER_MIN * 60` seconds, then stops the pump (servo stays at last position).
+
+`START` moves the servo and turns on the pump continuously. Use `STOP` to shut off.
 
 ### `GET /health`
 
@@ -129,6 +123,10 @@ Defined in `src/model/command.h`:
 ```cpp
 enum Target { NAGA_MORICH=0, ROSMARINO=1, HABANERO=2, CAROLINA_REAPER=3 };
 ```
+
+## Water Level Alert
+
+When `water_low_alert` is `true`, the ESP blocks `START` and `DISPENSE_SPECIFIC_AMOUNT` commands unless `force: true` is set. The `blocked_amount_ml` field in `/status` records how many ml were denied in the last blocked attempt.
 
 ## Flow Rate Calibration
 
@@ -148,9 +146,10 @@ pio run --target upload -e esp32
 pio device monitor  # serial console at 115200 baud
 ```
 
-## Unused Components
+## Unused / Spare Components
 
-- **74HC4051 (×3)** — 8-channel analog muxes. Not needed; the ADS1115 provides 4 dedicated ADC channels. Available for future expansion (e.g. additional environmental sensors).
+- **74HC4051 (×3)** — 8-channel analog muxes. Not needed; the ADS1115 provides 4 dedicated ADC channels.
 - **AMS1117 (×4 remaining)** — 5→3.3V regulators. One can be used for clean analog power (see above); the rest are spares.
+- **GPIO 15, 16** — free, previously used for valve relays 2 and 3.
 
 WiFi credentials are hardcoded in `src/esp32/main.cpp`.

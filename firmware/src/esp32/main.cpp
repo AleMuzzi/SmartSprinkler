@@ -2,13 +2,6 @@
 // Created by Alessandro Muzzi on 23/03/25.
 //
 
-
-/*
- * @Date: 2022-8-27
- * @Description: ESP32 Camera Surveillance Car
- * @FilePath:
- */
-
 #include <WiFi.h>
 #include <utils/string.h>
 #include <utils/time.h>
@@ -27,36 +20,37 @@
 
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
+#include <ESP32Servo.h>
 
 #define PIN_PUMP_RELAY 12
-#define PIN_VALVE_1 13
-#define PIN_VALVE_2 15
-#define PIN_VALVE_3 16
+#define PIN_ROTARY_SERVO 13
 
-#define FLOW_RATE_ML_PER_MIN 6000  // User must calibrate — default 6 L/min
+#define SERVO_MIN_US 500
+#define SERVO_MAX_US 2500
+#define SERVOFreq 50
+
+#define ROTARY_DELTA_DEG 15.0f
+#define ROTARY_POSITION_COUNT 4
+
+#define FLOW_RATE_ML_PER_MIN 6000
 
 #define ADS1115_SDA 14
 #define ADS1115_SCL 4
-#define SOIL_DRY_ADC 26400  // ADC value in dry air (GAIN_ONE, ~3.3V sensor VCC)
+#define SOIL_DRY_ADC 26400
 
 constexpr char ssid[15] = "Brignuzzi WiFi";
-constexpr char password[25] = "88uffleukticegscwrizaqrt"; // Enter WIFI Password
+constexpr char password[25] = "88uffleukticegscwrizaqrt";
 constexpr char hostname[16] = "smart_sprinkler";
-//const char *ssid = "AndroidAP_6717";		   // Enter SSID WIFI Name
-//const char *password = "10000001"; // Enter WIFI Password
 
 const IPAddress local_IP(192, 168, 1, 9);
 const IPAddress gateway(192, 168, 1, 1);
 const IPAddress subnet(255, 255, 255, 0);
 
-
 String WiFiAddr = "";
 
-// Variables for non-blocking timer
 unsigned long previousMillis = 0;
-constexpr long interval = 2000; // Interval at which to read sensor (milliseconds)
+constexpr long interval = 2000;
 
-// U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* clock=*/ A5, /* data=*/ A4, /* reset=*/ U8X8_PIN_NONE);  // High speed I2C
 float air_temperature;
 float air_humidity;
 float soil_moisture;
@@ -65,33 +59,33 @@ CommandManager command_manager;
 Hashtable<String, Route> routes;
 
 const Actuator water_pump(PIN_PUMP_RELAY);
-const Actuator valve_1(PIN_VALVE_1);
-const Actuator valve_2(PIN_VALVE_2);
-const Actuator valve_3(PIN_VALVE_3);
+Servo rotary_servo;
 
-Target::Value active_target = Target::NAGA_MORICH; // last selected target
+Target::Value active_target = Target::NAGA_MORICH;
+int rotary_current_position = 0;
+bool rotary_calibrated = false;
 
-// Soil moisture from ADS1115 (4 HW-390 sensors on AIN0–AIN3, software I2C on GPIO 14/4)
 int soil_moisture_raw[4] = {0, 0, 0, 0};
 bool ads_available = false;
 Adafruit_ADS1115 ads;
 TwoWire adsWire(1);
 
-// Water level alert — no sensor yet, always OK (false)
 bool water_low_alert = false;
 int blocked_amount_ml = 0;
 
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg);
-void plant_to_valves(Target::Value target);
+void plant_to_servo(Target::Value target);
 const char* target_to_string(Target::Value target);
 void read_soil_moistures();
+int servo_degrees_to_us(float degrees);
+void calibrate_rotary();
+void move_servo_to_position(int position);
 
 void setup_command_routes();
 
 void setup() {
-    // Start Serial
     Serial.begin(115200);
     Serial.setDebugOutput(true);
     Serial.println();
@@ -101,10 +95,8 @@ void setup() {
     Serial.println("###############################");
     Serial.println();
 
-    // Start Camera
     Camera::init();
 
-    // Connect to WiFi
     Serial.print("Device's MAC Address: ");
     Serial.println(WiFi.macAddress());
 
@@ -120,15 +112,8 @@ void setup() {
     WiFiAddr = WiFi.localIP().toString();
     Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
 
-    // Initialize valve relay pins (start closed)
-    pinMode(PIN_VALVE_1, OUTPUT);
-    pinMode(PIN_VALVE_2, OUTPUT);
-    pinMode(PIN_VALVE_3, OUTPUT);
-    digitalWrite(PIN_VALVE_1, LOW);
-    digitalWrite(PIN_VALVE_2, LOW);
-    digitalWrite(PIN_VALVE_3, LOW);
+    water_pump.switch_off();
 
-    // Initialize ADS1115 on software I2C (GPIO 14=SDA, GPIO 4=SCL)
     adsWire.begin(ADS1115_SDA, ADS1115_SCL);
     if (ads.begin(ADS1X15_ADDRESS, &adsWire)) {
         ads.setGain(GAIN_ONE);
@@ -138,12 +123,13 @@ void setup() {
         Serial.println("ADS1115 not found — check wiring");
     }
 
-    // Start the display
-    // u8g2.begin();
-
     TempHumiditySensor::init();
 
-    // Initialize Command Manager
+    rotary_servo.attach(PIN_ROTARY_SERVO, SERVO_MIN_US, SERVO_MAX_US, SERVOFreq);
+    Serial.println("Rotary servo attached (GPIO 13)");
+
+    calibrate_rotary();
+
     command_manager.init();
     setup_command_routes();
 
@@ -152,28 +138,23 @@ void setup() {
 }
 
 void loop() {
-    // --- Non-Blocking Sensor Reading ---
     const unsigned long currentMillis = millis();
 
     if (currentMillis - previousMillis >= interval) {
-        // printCurrentTime();
         previousMillis = currentMillis;
 
-        // Update air temperature
         air_temperature = TempHumiditySensor::getTemperature();
         if (!isnan(air_temperature)) {
             Serial.print("Temperature: ");
             Serial.println(air_temperature);
         }
 
-        // Update air humidity
         air_humidity = TempHumiditySensor::getHumidity();
         if (!isnan(air_humidity)) {
             Serial.print("Humidity: ");
             Serial.println(air_humidity);
         }
 
-        // Update soil moisture from ADS1115
         read_soil_moistures();
         if (ads_available) {
             Serial.print("Soil moisture ADC: ");
@@ -190,27 +171,6 @@ void loop() {
     }
 
     delay(100);
-
-
-    // --- Display Update ---
-    // The drawing code MUST be inside this do-while loop for page-buffer mode
-    // u8g2.firstPage();
-    // do {
-    // 	u8g2.setFont(u8g2_font_ncenB10_tr); // A nice, clear font
-    //
-    // 	// Display Temperature
-    // 	u8g2.setCursor(0, 15);
-    // 	u8g2.print("Temp: ");
-    // 	u8g2.print(temperature, 1); // Print with 1 decimal place
-    // 	u8g2.print(" C");
-    //
-    // 	// Display Humidity
-    // 	u8g2.setCursor(0, 45);
-    // 	u8g2.print("Humi: ");
-    // 	u8g2.print(humidity, 1); // Print with 1 decimal place
-    // 	u8g2.print(" %");
-    //
-    // } while (u8g2.nextPage());
 }
 
 void setup_command_routes() {
@@ -218,7 +178,6 @@ void setup_command_routes() {
                 .http_method = HTTP_GET,
                 .from_json = nullptr,
                 .handler = [](MongooseHttpServerRequest *req, const std::shared_ptr<ICanBeDeserialized>& command) {
-                    Serial.println("health");
                     req->send(200, "application/json", R"({"status":"ok"})");
                 }
             });
@@ -229,7 +188,6 @@ void setup_command_routes() {
                     const auto curr_command = std::static_pointer_cast<Command>(command);
 
                     if (curr_command->getType() != "Command") {
-                        Serial.println("Command type mismatch");
                         reply_invalid_payload(req);
                         return;
                     }
@@ -258,9 +216,7 @@ void setup_command_routes() {
                     status.put("air_humidity", String(air_humidity, 2));
                     status.put("soil_moisture", String(soil_moisture, 2));
                     status.put("water_pump", water_pump.is_on() ? "on" : "off");
-                    status.put("valve_1", valve_1.is_on() ? "on" : "off");
-                    status.put("valve_2", valve_2.is_on() ? "on" : "off");
-                    status.put("valve_3", valve_3.is_on() ? "on" : "off");
+                    status.put("rotary_position", rotary_calibrated ? String(rotary_current_position) : "uncalibrated");
                     status.put("soil_moisture_0", String(soil_moisture_raw[0]));
                     status.put("soil_moisture_1", String(soil_moisture_raw[1]));
                     status.put("soil_moisture_2", String(soil_moisture_raw[2]));
@@ -277,33 +233,6 @@ void setup_command_routes() {
                 }
             });
     command_manager.setup_routes(routes);
-
-    // region Update LCD
-
-    // this->server.on(path.c_str(), route.http_method, [this, request](MongooseHttpServerRequest *req) {
-    //     Serial.println("Command request received");
-    //     const String body = req->body();
-    //     Serial.print("Received HTTP command: ");
-    //     Serial.println(body);
-    //
-    //     DeserializationError error;
-    //     String error_msg;
-    //     const auto command = request->from_json(body.c_str(), error, error_msg);
-    //     if (command != nullptr) {
-    //         process_command(*command);
-    //         req->send(200, "application/json", R"({"status":"ok"})");
-    //     } else {
-    //         Serial.print("Failed to parse command: ");
-    //         Serial.println(error.c_str());
-    //         req->send(
-    //             400,
-    //             "application/json",
-    //             R"({"status":"error","error_code":")" + String(error.c_str()) + R"(","message":")" + error_msg + "\"}"
-    //         );
-    //     }
-    // });
-
-    // endregion
 }
 
 void reply_invalid_payload(MongooseHttpServerRequest *req) {
@@ -314,31 +243,86 @@ void reply_invalid_payload(MongooseHttpServerRequest *req) {
     );
 }
 
-void plant_to_valves(const Target::Value target) {
-    switch (target) {
-        // V1 OFF → V2; V2 OFF → plant
-        case Target::HABANERO:
-            valve_1.switch_off();  // select V2 branch
-            valve_2.switch_off();  // select plant 0 on V2
-            valve_3.switch_off();  // V3 isolated, safe off
-            break;
-        case Target::NAGA_MORICH:
-            valve_1.switch_off();  // select V2 branch
-            valve_2.switch_on();   // select plant 1 on V2
-            valve_3.switch_off();  // V3 isolated, safe off
-            break;
-        // V1 ON → V3; V3 OFF → plant
-        case Target::CAROLINA_REAPER:
-            valve_1.switch_on();   // select V3 branch
-            valve_2.switch_off();  // V2 isolated, safe off
-            valve_3.switch_off();  // select plant 0 on V3
-            break;
-        case Target::ROSMARINO:
-            valve_1.switch_on();   // select V3 branch
-            valve_2.switch_off();  // V2 isolated, safe off
-            valve_3.switch_on();   // select plant 1 on V3
-            break;
+int servo_degrees_to_us(float degrees) {
+    const float range_us = SERVO_MAX_US - SERVO_MIN_US;
+    return SERVO_MIN_US + static_cast<int>((degrees / 180.0f) * range_us);
+}
+
+void move_servo_to_position(int position) {
+    if (position < 0 || position >= ROTARY_POSITION_COUNT) {
+        Serial.print("Invalid position: ");
+        Serial.println(position);
+        return;
     }
+    const float angle = position * ROTARY_DELTA_DEG;
+    const int us = servo_degrees_to_us(angle);
+    rotary_servo.writeMicroseconds(us);
+    rotary_current_position = position;
+    Serial.print("Servo moved to position ");
+    Serial.print(position);
+    Serial.print(" (");
+    Serial.print(angle);
+    Serial.print(" deg, ");
+    Serial.print(us);
+    Serial.println(" us)");
+}
+
+void calibrate_rotary() {
+    Serial.println("Starting rotary calibration...");
+    bool all_success = true;
+
+    for (int i = 0; i < ROTARY_POSITION_COUNT; i++) {
+        const float angle = i * ROTARY_DELTA_DEG;
+        const int target_us = servo_degrees_to_us(angle);
+        rotary_servo.writeMicroseconds(target_us);
+        delay(800);
+
+        const int actual_us = rotary_servo.readMicroseconds();
+        const int error = abs(actual_us - target_us);
+
+        if (error > 100) {
+            Serial.print("Calibration warning at position ");
+            Serial.print(i);
+            Serial.print(": expected ");
+            Serial.print(target_us);
+            Serial.print(" us, got ");
+            Serial.print(actual_us);
+            Serial.print(" us (error ");
+            Serial.print(error);
+            Serial.println(" us)");
+            all_success = false;
+        } else {
+            Serial.print("Position ");
+            Serial.print(i);
+            Serial.print(" OK (");
+            Serial.print(actual_us);
+            Serial.println(" us)");
+        }
+    }
+
+    if (all_success) {
+        rotary_calibrated = true;
+        rotary_current_position = 0;
+        rotary_servo.writeMicroseconds(servo_degrees_to_us(0));
+        Serial.println("Rotary calibration: SUCCESS — all positions verified");
+    } else {
+        rotary_calibrated = false;
+        rotary_current_position = 0;
+        rotary_servo.writeMicroseconds(servo_degrees_to_us(0));
+        Serial.println("Rotary calibration: PARTIAL — using software tracking");
+    }
+}
+
+void plant_to_servo(Target::Value target) {
+    int position;
+    switch (target) {
+        case Target::HABANERO:      position = 0; break;
+        case Target::NAGA_MORICH:   position = 1; break;
+        case Target::CAROLINA_REAPER: position = 2; break;
+        case Target::ROSMARINO:     position = 3; break;
+        default: position = 0;
+    }
+    move_servo_to_position(position);
 }
 
 const char* target_to_string(const Target::Value target) {
@@ -365,14 +349,10 @@ void read_soil_moistures() {
 }
 
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg) {
-    // Process the received command
     switch (command->get_action()) {
         case Action::STOP:
             Serial.println("Stopping dispensing.");
             water_pump.switch_off();
-            valve_1.switch_off();
-            valve_2.switch_off();
-            valve_3.switch_off();
             break;
         case Action::START:
             if (water_low_alert && !command->get_force()) {
@@ -383,7 +363,7 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
             }
             Serial.println("Starting dispensing.");
             active_target = command->get_target();
-            plant_to_valves(active_target);
+            plant_to_servo(active_target);
             delay(500);
             water_pump.switch_on();
             break;
@@ -396,7 +376,7 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
                 return false;
             }
             active_target = command->get_target();
-            plant_to_valves(active_target);
+            plant_to_servo(active_target);
             delay(500);
             water_pump.switch_on();
             Serial.print("Dispensing ");
@@ -407,9 +387,6 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
             );
             delay(duration_ms);
             water_pump.switch_off();
-            valve_1.switch_off();
-            valve_2.switch_off();
-            valve_3.switch_off();
             break;
         }
         default:

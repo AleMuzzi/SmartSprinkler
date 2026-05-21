@@ -17,20 +17,20 @@ void main() {
       expect(s.waterPump, equals('off'));
       expect(s.waterLowAlert, equals(false));
       expect(s.blockedAmountMl, equals(0));
+      expect(s.rotaryPosition, isNull);
+      expect(s.activePlant, isNull);
     });
   });
 
   group('Sprinkler.updateWithJson', () {
-    test('parses full status response', () {
+    test('parses full status response with rotary selector', () {
       final s = Sprinkler();
       s.updateWithJson({
         'air_humidity': '65.5',
         'air_temperature': '28.3',
         'soil_moisture': '42.0',
         'water_pump': 'on',
-        'valve_1': 'off',
-        'valve_2': 'on',
-        'valve_3': 'off',
+        'rotary_position': '1',
         'soil_moisture_0': '12000',
         'soil_moisture_1': '15000',
         'soil_moisture_2': '8000',
@@ -45,6 +45,20 @@ void main() {
       expect(s.waterPump, equals('on'));
       expect(s.waterLowAlert, equals(false));
       expect(s.blockedAmountMl, equals(0));
+      expect(s.rotaryPosition, equals(1));
+      expect(s.activePlant, equals('NAGA_MORICH'));
+    });
+
+    test('parses uncalibrated rotary position', () {
+      final s = Sprinkler();
+      s.updateWithJson({'rotary_position': 'uncalibrated'});
+      expect(s.rotaryPosition, isNull);
+    });
+
+    test('parses active_plant null', () {
+      final s = Sprinkler();
+      s.updateWithJson({'active_plant': 'null'});
+      expect(s.activePlant, isNull);
     });
 
     test('parses water low alert on', () {
