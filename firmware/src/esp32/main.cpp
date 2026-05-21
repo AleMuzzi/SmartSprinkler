@@ -25,12 +25,19 @@
 #include "services/CommandManager.h"
 #include "utils/hashtable_ext.h"
 
+#include <Wire.h>
+#include <Adafruit_ADS1X15.h>
+
 #define PIN_PUMP_RELAY 12
 #define PIN_VALVE_1 13
 #define PIN_VALVE_2 15
 #define PIN_VALVE_3 16
 
 #define FLOW_RATE_ML_PER_MIN 6000  // User must calibrate — default 6 L/min
+
+#define ADS1115_SDA 14
+#define ADS1115_SCL 4
+#define SOIL_DRY_ADC 26400  // ADC value in dry air (GAIN_ONE, ~3.3V sensor VCC)
 
 constexpr char ssid[15] = "Brignuzzi WiFi";
 constexpr char password[25] = "88uffleukticegscwrizaqrt"; // Enter WIFI Password
@@ -43,8 +50,6 @@ const IPAddress gateway(192, 168, 1, 1);
 const IPAddress subnet(255, 255, 255, 0);
 
 
-// GPIO Setting
-const extern uint8_t gpLed = 4; // Light
 String WiFiAddr = "";
 
 // Variables for non-blocking timer
@@ -66,17 +71,18 @@ const Actuator valve_3(PIN_VALVE_3);
 
 Target::Value active_target = Target::NAGA_MORICH; // last selected target
 
-// Soil moisture from Arduino Nano (4 HW-390 sensors on A0–A3)
+// Soil moisture from ADS1115 (4 HW-390 sensors on AIN0–AIN3, software I2C on GPIO 14/4)
 int soil_moisture_raw[4] = {0, 0, 0, 0};
-bool nano_available = false;
-// soil_moisture (float) stores the average as percentage — used by /status for backward compatibility
+bool ads_available = false;
+Adafruit_ADS1115 ads;
+TwoWire adsWire(1);
 
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg);
 void plant_to_valves(Target::Value target);
 const char* target_to_string(Target::Value target);
-void request_soil_moistures();
+void read_soil_moistures();
 
 void setup_command_routes();
 
@@ -90,9 +96,6 @@ void setup() {
     Serial.println("#       Smart Sprinkler       #");
     Serial.println("###############################");
     Serial.println();
-
-    pinMode(gpLed, OUTPUT); // Light
-    digitalWrite(gpLed, LOW);
 
     // Start Camera
     Camera::init();
@@ -113,8 +116,6 @@ void setup() {
     WiFiAddr = WiFi.localIP().toString();
     Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
 
-    pinMode(4, OUTPUT);
-
     // Initialize valve relay pins (start closed)
     pinMode(PIN_VALVE_1, OUTPUT);
     pinMode(PIN_VALVE_2, OUTPUT);
@@ -122,6 +123,16 @@ void setup() {
     digitalWrite(PIN_VALVE_1, LOW);
     digitalWrite(PIN_VALVE_2, LOW);
     digitalWrite(PIN_VALVE_3, LOW);
+
+    // Initialize ADS1115 on software I2C (GPIO 14=SDA, GPIO 4=SCL)
+    adsWire.begin(ADS1115_SDA, ADS1115_SCL);
+    if (ads.begin(ADS1X15_ADDRESS, &adsWire)) {
+        ads.setGain(GAIN_ONE);
+        ads_available = true;
+        Serial.println("ADS1115 initialized (SDA=14, SCL=4)");
+    } else {
+        Serial.println("ADS1115 not found — check wiring");
+    }
 
     // Start the display
     // u8g2.begin();
@@ -158,10 +169,10 @@ void loop() {
             Serial.println(air_humidity);
         }
 
-        // Update soil moisture from Arduino Nano
-        request_soil_moistures();
-        if (nano_available) {
-            Serial.print("Soil moisture raw: ");
+        // Update soil moisture from ADS1115
+        read_soil_moistures();
+        if (ads_available) {
+            Serial.print("Soil moisture ADC: ");
             Serial.print(soil_moisture_raw[0]); Serial.print(", ");
             Serial.print(soil_moisture_raw[1]); Serial.print(", ");
             Serial.print(soil_moisture_raw[2]); Serial.print(", ");
@@ -334,52 +345,17 @@ const char* target_to_string(const Target::Value target) {
     return "UNKNOWN";
 }
 
-void request_soil_moistures() {
-    // Flush any stale data in the RX buffer
-    while (Serial.available()) {
-        Serial.read();
-    }
+void read_soil_moistures() {
+    if (!ads_available) return;
 
-    // Send sample request to Nano
-    Serial.write('S');
+    soil_moisture_raw[0] = ads.readADC_SingleEnded(0);
+    soil_moisture_raw[1] = ads.readADC_SingleEnded(1);
+    soil_moisture_raw[2] = ads.readADC_SingleEnded(2);
+    soil_moisture_raw[3] = ads.readADC_SingleEnded(3);
 
-    // Read response with timeout
-    const unsigned long start = millis();
-    String response;
-    while (millis() - start < 100) {
-        if (Serial.available()) {
-            const char c = static_cast<char>(Serial.read());
-            if (c == '\n') break;
-            response += c;
-        }
-    }
-
-    if (response.length() == 0) {
-        nano_available = false;
-        return;
-    }
-
-    // Parse "val0,val1,val2,val3"
-    int vals[4] = {0};
-    int idx = 0;
-    int pos = 0;
-    for (int i = 0; i <= response.length() && idx < 4; i++) {
-        if (i == response.length() || response.charAt(i) == ',') {
-            vals[idx++] = response.substring(pos, i).toInt();
-            pos = i + 1;
-        }
-    }
-
-    if (idx == 4) {
-        soil_moisture_raw[0] = vals[0];
-        soil_moisture_raw[1] = vals[1];
-        soil_moisture_raw[2] = vals[2];
-        soil_moisture_raw[3] = vals[3];
-        // Average raw → percentage (same mapping as old SensorSoilMoisture: 1023→0%, 0→100%)
-        const float avg_raw = (vals[0] + vals[1] + vals[2] + vals[3]) / 4.0f;
-        soil_moisture = constrain(map(static_cast<int>(avg_raw), 1023, 0, 0, 100), 0, 100);
-        nano_available = true;
-    }
+    const int avg_raw = (soil_moisture_raw[0] + soil_moisture_raw[1] +
+                         soil_moisture_raw[2] + soil_moisture_raw[3]) / 4;
+    soil_moisture = constrain(map(avg_raw, SOIL_DRY_ADC, 0, 0, 100), 0, 100);
 }
 
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg) {

@@ -14,8 +14,8 @@ PlatformIO project for the ESP32-CAM board that controls the irrigation pump, ro
 | Valve relay 1 (LSB)   | 13                                                       | 3-way 2-position solenoid             |
 | Valve relay 2         | 15                                                       | 3-way 2-position solenoid             |
 | Valve relay 3 (MSB)   | 16                                                       | 3-way 2-position solenoid             |
-| Camera LED flash      | 4                                                        |                                       |
-| UART (ESP↔Nano)       | 1 (TX), 3 (RX)                                           | Shared with programming port          |
+| ADS1115 SCL           | 4                                                        | Software I2C (camera LED repurposed)  |
+| ADS1115 SDA           | 14                                                       | Software I2C                          |
 
 ### Valve-to-Plant Mapping
 
@@ -30,51 +30,38 @@ PlatformIO project for the ESP32-CAM board that controls the irrigation pump, ro
 
 V1 selects which second-level valve (V2 or V3) receives water; the selected valve then routes to one of its 2 plants. The non-selected valve is kept OFF since no water reaches its branch. Plumbing: common water input → V1 input; V1 OFF output → V2 input; V1 ON output → V3 input; each V2/V3 output → one plant's drip line.
 
-### Arduino Nano — 4-Channel Soil Moisture Hub
+### ADS1115 — 4-Channel 16-bit Soil Moisture ADC
 
-The ESP32-CAM has no free GPIOs for extra ADCs, so an Arduino Nano acts as a dedicated sensor co-processor.
-It reads 4 HW-390 sensors and sends the values over UART on request.
+The ESP32-CAM has no free GPIOs for extra ADCs and its ADC2 conflicts with WiFi.
+An external ADS1115 (I2C, 4-channel, 16-bit) provides clean isolated readings via software I2C on GPIO 14 (SDA) and GPIO 4 (SCL, camera LED repurposed).
 
 #### Wiring
 
-| Nano   | ESP32-CAM       | Sensor        |
-|--------|-----------------|---------------|
-| D0 RX  | GPIO 1 (TX)     |               |
-| D1 TX  | GPIO 3 (RX)     |               |
-| GND    | GND             |               |
-| 5V     | 5V rail         |               |
-| A0     |                 | HW-390 #1 (Habanero)      |
-| A1     |                 | HW-390 #2 (Naga Morich)   |
-| A2     |                 | HW-390 #3 (Carolina R.)   |
-| A3     |                 | HW-390 #4 (Rosmarino)     |
+| ADS1115 | ESP32-CAM       | Sensor        |
+|---------|-----------------|---------------|
+| VDD     | 3.3V            |               |
+| GND     | GND             |               |
+| SCL     | GPIO 4          | Camera LED flash repurposed as I2C clock |
+| SDA     | GPIO 14         |                                               |
+| AIN0    |                 | HW-390 #1 (Habanero)      |
+| AIN1    |                 | HW-390 #2 (Naga Morich)   |
+| AIN2    |                 | HW-390 #3 (Carolina R.)   |
+| AIN3    |                 | HW-390 #4 (Rosmarino)     |
 
-UART is shared with the ESP32 programming port (FTDI adapter). During normal operation the FTDI is disconnected, so the Nano has exclusive use of the line. During ESP32 programming, disconnect Nano D1 from GPIO 3 to avoid TX contention.
+GPIO 14 is used as digital I2C data (not analog), so the ADC2 WiFi conflict does not apply.
+GPIO 4 (camera LED flash) is sacrificed because no free GPIOs remain on the ESP32-CAM.
 
-#### Protocol
+#### Optional: AMS1117 for clean 3.3V power
 
-Request-response over Serial at 115200 baud:
+For the lowest noise on ADC readings, power the ADS1115 and HW-390 sensors from an external AMS1117 5→3.3V regulator instead of the ESP32-CAM's onboard regulator:
 
-1. ESP32 flushes RX, sends byte `'S'` (0x53)
-2. Nano reads all 4 ADCs, responds with `"<a0>,<a1>,<a2>,<a3>\n"`
-3. ESP32 parses the CSV line, stores raw values, and computes `soil_moisture` as the average percentage (same 0–1023 → 0–100% mapping as the original single-sensor code)
-
-If the Nano does not respond within 100 ms, `nano_available` is set to `false` and the last known values are retained.
-
-#### Build & upload
-
-```bash
-# ESP32 firmware (default)
-pio run --target upload -e esp32
-
-# Arduino Nano firmware
-pio run --target upload -e nano --upload-port /dev/ttyUSB0
 ```
-
-Replace `/dev/ttyUSB0` with the Nano's actual serial port (e.g. `/dev/cu.usbserial-*` on macOS).
+5V rail → AMS1117 VIN → 3.3V → ADS1115 VDD + HW-390 VCC
+```
 
 #### Sensor mapping in `/status`
 
-Each Nano ADC channel appears as a separate field in the `/status` response:
+Each ADS1115 channel appears as a separate field in the `/status` response:
 
 ```json
 {
@@ -85,7 +72,7 @@ Each Nano ADC channel appears as a separate field in the `/status` response:
 }
 ```
 
-The legacy `soil_moisture` field still reports the average percentage for backward compatibility with the Bayesian server.
+The legacy `soil_moisture` field still reports the average percentage (map: 26400→0%, 0→100%) for backward compatibility with the Bayesian server.
 
 ## API endpoints (Mongoose, port 80)
 
@@ -157,8 +144,13 @@ The default `FLOW_RATE_ML_PER_MIN` is 6000 (6 L/min). To calibrate:
 ## Build & deploy
 
 ```bash
-pio run --target upload
+pio run --target upload -e esp32
 pio device monitor  # serial console at 115200 baud
 ```
+
+## Unused Components
+
+- **74HC4051 (×3)** — 8-channel analog muxes. Not needed; the ADS1115 provides 4 dedicated ADC channels. Available for future expansion (e.g. additional environmental sensors).
+- **AMS1117 (×4 remaining)** — 5→3.3V regulators. One can be used for clean analog power (see above); the rest are spares.
 
 WiFi credentials are hardcoded in `src/esp32/main.cpp`.

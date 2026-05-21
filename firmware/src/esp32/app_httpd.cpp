@@ -10,7 +10,6 @@
 #include "camera_index.h"
 #include "Arduino.h"
 
-extern int gpLed;
 extern String WiFiAddr;
 byte txdata[3] = {0xA5, 0, 0x5A};
 const int Forward       = 92;                               // 前进
@@ -513,20 +512,7 @@ static esp_err_t stop_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "text/html");
     return httpd_resp_send(req, "OK", 2);
 }
-static esp_err_t ledon_handler(httpd_req_t *req)
-{
-    digitalWrite(gpLed, HIGH);
-    Serial.println("LED ON");
-    httpd_resp_set_type(req, "text/html");
-    return httpd_resp_send(req, "OK", 2);
-}
-static esp_err_t ledoff_handler(httpd_req_t *req)
-{
-    digitalWrite(gpLed, LOW);
-    Serial.println("LED OFF");
-    httpd_resp_set_type(req, "text/html");
-    return httpd_resp_send(req, "OK", 2);
-}
+// LED handlers removed — GPIO 4 repurposed as ADS1115 SCL
 
 //////////////////////////////new/////////////////////////////////
 static esp_err_t leftup_handler(httpd_req_t *req)           // 左上
@@ -719,18 +705,6 @@ void startCameraServer()
         .user_ctx = NULL};
 //////////////////////////////new/////////////////////////////////
 
-    httpd_uri_t ledon_uri = {
-        .uri = "/ledon",
-        .method = HTTP_GET,
-        .handler = ledon_handler,
-        .user_ctx = NULL};
-
-    httpd_uri_t ledoff_uri = {
-        .uri = "/ledoff",
-        .method = HTTP_GET,
-        .handler = ledoff_handler,
-        .user_ctx = NULL};
-
     httpd_uri_t index_uri = {
         .uri = "/",
         .method = HTTP_GET,
@@ -774,8 +748,6 @@ void startCameraServer()
         httpd_register_uri_handler(camera_httpd, &stop_uri);
         httpd_register_uri_handler(camera_httpd, &left_uri);
         httpd_register_uri_handler(camera_httpd, &right_uri);
-        httpd_register_uri_handler(camera_httpd, &ledon_uri);
-        httpd_register_uri_handler(camera_httpd, &ledoff_uri);
         //////////////////////////////new/////////////////////////////////
         httpd_register_uri_handler(camera_httpd, &leftup_uri);
         httpd_register_uri_handler(camera_httpd, &leftdown_uri);
