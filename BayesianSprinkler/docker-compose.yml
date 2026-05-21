@@ -7,8 +7,10 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/app/data
+      - ./scripts:/app/scripts:ro
     environment:
       - PYTHONUNBUFFERED=1
+      - VALIDATION_SCHEDULE=0 6 * * *  # supercronic crontab format: daily at 06:00
     network_mode: host
 
   # Optional: mock ESP32 for local development/testing

@@ -22,7 +22,7 @@ void test_servo_degrees_to_us_min() {
 
 void test_servo_degrees_to_us_mid() {
     const int us = servo_degrees_to_us(90.0f);
-    TEST_ASSERTTrue(us > 1400 && us < 1600);
+    TEST_ASSERT_TRUE(us > 1400 && us < 1600);
 }
 
 void test_servo_degrees_to_us_max() {

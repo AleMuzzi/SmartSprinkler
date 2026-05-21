@@ -1,0 +1,36 @@
+{
+  "last_run_at": "2026-05-21T18:39:56.912446+00:00",
+  "last_successful_run_at": "2026-05-21T18:39:56.911897+00:00",
+  "weight_version": 2,
+  "adjustments": [
+    {
+      "plant": "habanero",
+      "param": "base_need",
+      "delta": -0.2,
+      "old": 0.65,
+      "new": 0.52,
+      "reason": "soil_wet_prob=0.4625>0.20"
+    },
+    {
+      "plant": "carolina_reaper",
+      "param": "base_need",
+      "delta": -0.2,
+      "old": 0.7,
+      "new": 0.56,
+      "reason": "soil_wet_prob=0.4625>0.20"
+    },
+    {
+      "plant": "naga_morich",
+      "param": "base_need",
+      "delta": -0.2,
+      "old": 0.68,
+      "new": 0.544,
+      "reason": "soil_wet_prob=0.4625>0.20"
+    }
+  ],
+  "last_report_path": "/Users/alessandro/Documents/Projects/SmartSprinkler/BayesianSprinkler/validation_report.md",
+  "last_metrics": {
+    "soil_wet_prob": 0.4625,
+    "rain_yes_prob": 0.345
+  }
+}
