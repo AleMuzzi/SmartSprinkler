@@ -1,0 +1,23 @@
+services:
+  bayesian-server:
+    build: .
+    container_name: bayesian-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    network_mode: host
+
+  # Optional: mock ESP32 for local development/testing
+  # mock-esp:
+  #   image: mockserver/mockserver:latest
+  #   container_name: mock-esp
+  #   ports:
+  #     - "8081:1080"
+  #   environment:
+  #     - MOCKSERVER_INITIALIZATION_JSON_PATH=/config.json
+  #   volumes:
+  #     - ./mock-esp-config.json:/config.json:ro
