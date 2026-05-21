@@ -5,6 +5,7 @@ from threading import Lock
 
 import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -27,6 +28,13 @@ class AppState:
 
 state = AppState()
 
+POLL_INTERVALS = {
+    "low": 60,
+    "medium": 30,
+    "high": 15,
+}
+DEFAULT_INTERVAL = 30
+
 
 # ── Request models ──────────────────────────────────────────────────
 
@@ -40,7 +48,15 @@ class ManualWaterRequest(BaseModel):
 async def lifespan(app: FastAPI):
     init_db()
     state.scheduler = BackgroundScheduler()
-    _schedule_jobs(state)
+    _schedule_hourly_poll(state, interval_minutes=60)
+    poll_s = state.config["esp"]["poll_interval"]
+    state.scheduler.add_job(
+        func=lambda: _inference_cycle(state),
+        trigger="interval",
+        seconds=poll_s,
+        id="inference_cycle",
+        replace_existing=True,
+    )
     state.scheduler.start()
     logger.info("API server started — scheduler running")
     yield
@@ -49,20 +65,11 @@ async def lifespan(app: FastAPI):
     logger.info("API server stopped")
 
 
-def _schedule_jobs(st: AppState):
+def _schedule_hourly_poll(st: AppState, interval_minutes: int):
     st.scheduler.add_job(
         func=lambda: _hourly_poll(st),
-        trigger="interval",
-        hours=1,
+        trigger=IntervalTrigger(minutes=interval_minutes),
         id="hourly_poll",
-        replace_existing=True,
-    )
-    poll_s = st.config["esp"]["poll_interval"]
-    st.scheduler.add_job(
-        func=lambda: _inference_cycle(st),
-        trigger="interval",
-        seconds=poll_s,
-        id="inference_cycle",
         replace_existing=True,
     )
 
@@ -112,7 +119,6 @@ def _register_routes(app: FastAPI):
                 need_water=need,
             )
 
-        # Check water level before watering
         if status.get("water_low_alert") == "on":
             logger.warning("Water low alert — blocked watering for %s", req.plant_type)
             raise HTTPException(
@@ -135,14 +141,81 @@ def _register_routes(app: FastAPI):
 # ── Background jobs ─────────────────────────────────────────────────
 
 def _hourly_poll(st: AppState):
+    temperature_fallback = None
+
     try:
         status = st.esp.get_status()
-        wx = st.weather.fetch()
+        raw_temp = float(status["air_temperature"])
+    except Exception:
+        logger.warning("ESP offline — falling back to weather API for temperature")
+        try:
+            wx = st.weather.fetch()
+            raw_temp = wx.get("temperature")
+        except Exception:
+            raw_temp = None
 
+    if raw_temp is None:
+        logger.warning(
+            "No temperature source available — "
+            "using safe default interval of %d minutes",
+            DEFAULT_INTERVAL,
+        )
+        _reschedule_poll(st, DEFAULT_INTERVAL, None)
+        _log_and_insert(st, {"cloud_cover": "cloudy", "rain_forecast": "no"})
+        return
+
+    temp_state = _temperature_state(raw_temp, st.config["thresholds"]["temperature"])
+    interval = POLL_INTERVALS.get(temp_state, DEFAULT_INTERVAL)
+
+    logger.info(
+        "Current temperature is %.1f°C (%s): "
+        "adjusting polling interval to %d minutes.",
+        raw_temp, temp_state, interval,
+    )
+
+    _reschedule_poll(st, interval, raw_temp)
+
+    try:
+        wx = st.weather.fetch()
+    except Exception:
+        wx = {"cloud_cover": "cloudy", "rain_forecast": "no"}
+
+    _log_and_insert(st, wx)
+
+
+def _temperature_state(temp_celsius: float, thresholds: dict) -> str:
+    if temp_celsius < thresholds["low"]:
+        return "low"
+    if temp_celsius < thresholds["medium"]:
+        return "medium"
+    return "high"
+
+
+def _reschedule_poll(st: AppState, interval_minutes: int, temperature: float | None):
+    with st.lock:
+        existing = st.scheduler.get_job("hourly_poll")
+        if existing:
+            st.scheduler.modify_job(
+                "hourly_poll",
+                trigger=IntervalTrigger(minutes=interval_minutes),
+            )
+        else:
+            _schedule_hourly_poll(st, interval_minutes)
+
+
+def _log_and_insert(st: AppState, wx: dict):
+    try:
+        status = st.esp.get_status()
         soil = st.esp.discretize_soil_moisture(float(status["soil_moisture"]))
         temp = st.esp.discretize_temperature(float(status["air_temperature"]))
         humid = st.esp.discretize_humidity(float(status["air_humidity"]))
+    except Exception:
+        logger.warning("ESP offline during hourly poll — using weather-only defaults")
+        soil = st.esp.discretize_soil_moisture(0.0)
+        temp = "medium"
+        humid = "medium"
 
+    try:
         for plant_name in st.config["plants"]:
             insert_record(
                 plant_type=plant_name,
@@ -153,9 +226,8 @@ def _hourly_poll(st: AppState):
                 rain_forecast=wx["rain_forecast"],
                 need_water="no",
             )
-
         logger.info("Hourly poll: logged %d plants (need_water=no)",
-                     len(st.config["plants"]))
+                    len(st.config["plants"]))
     except Exception:
         logger.exception("Hourly poll failed")
 
