@@ -21,16 +21,16 @@ PlatformIO project for the ESP32-CAM board that controls the irrigation pump, ro
 
 The SG90 servo rotates a 3D-printed water path selector (Instructables: *Water Path Selector*) to direct water from a single input to one of 4 output ports. Each output connects to a different plant's drip line.
 
-The servo position (angle) selects the active output:
+The servo position (angle) selects the active output (based on 3D-printed Water Path Selector from Instructables):
 
-| Plant            | Position | Angle (15° step) |
+| Plant            | Position | Angle (18° step) |
 |------------------|----------|-------------------|
-| Habanero        | 0        | 0°               |
-| Naga Morich     | 1        | 15°              |
-| Carolina Reaper | 2        | 30°              |
-| Rosmarino       | 3        | 45°              |
+| Habanero        | 0        | 52°              |
+| Naga Morich     | 1        | 70°              |
+| Carolina Reaper | 2        | 88°              |
+| Rosmarino       | 3        | 106°             |
 
-The step angle (`ROTARY_DELTA_DEG = 15.0°`) can be adjusted in `src/esp32/main.cpp` once the physical positioning is calibrated. After moving to a position, the servo holds that position indefinitely (no power draw after reaching target).
+The step angle (`ROTARY_DELTA_DEG = 18.0°`, start `ROTARY_START_DEG = 52.0°`) can be adjusted in `src/esp32/main.cpp` once the physical positioning is calibrated. After moving to a position, the servo holds that position indefinitely (no power draw after reaching target).
 
 ### Startup Calibration
 
