@@ -222,7 +222,14 @@ class DashboardViewModel extends ChangeNotifier {
     if (_operationMode == OperationMode.manual) {
       await _waterDirect(plant);
     } else {
-      await _waterViaBayesian(plant);
+      final success = await _waterViaBayesian(plant);
+      if (!success && _bayesianStatus == ConnectivityStatus.disconnected) {
+        await _waterDirect(plant);
+        await Fluttertoast.showToast(
+          msg: '⚠️ Bayesian offline — watered ${plant.displayName} directly via ESP',
+          fontSize: 14,
+        );
+      }
     }
   }
 
@@ -243,7 +250,7 @@ class DashboardViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> _waterViaBayesian(PlantData plant) async {
+  Future<bool> _waterViaBayesian(PlantData plant) async {
     try {
       final payload = jsonEncode({'plant_type': plant.id});
       final response = await http.post(
@@ -254,11 +261,14 @@ class DashboardViewModel extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         await Fluttertoast.showToast(msg: '✅ ${plant.displayName} watered via Bayesian', fontSize: 16);
+        return true;
       } else {
         await Fluttertoast.showToast(msg: '❌ Bayesian error: ${response.statusCode}', fontSize: 16);
+        return false;
       }
     } catch (e) {
       await Fluttertoast.showToast(msg: '❌ Bayesian server unreachable', fontSize: 16);
+      return false;
     }
   }
 
