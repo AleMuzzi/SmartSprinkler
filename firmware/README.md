@@ -3,6 +3,7 @@
 PlatformIO project for the ESP32-CAM board that controls the irrigation pump, routes water via a rotary selector (SG90 servo) to 4 plants, and exposes sensor readings via HTTP.
 
 ## Hardware
+![ESP32-CAM-Pinout.png](res/ESP32-CAM-Pinout.png)
 
 ### Pinout
 

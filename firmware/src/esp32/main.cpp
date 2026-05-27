@@ -29,9 +29,9 @@
 #define SERVO_MAX_US 2500
 #define SERVOFreq 50
 
-#define ROTARY_DELTA_DEG 18.0f
-#define ROTARY_START_DEG  52.0f
-#define ROTARY_POSITION_COUNT 4
+#define ROTARY_DELTA_DEG 19.0f
+#define ROTARY_START_DEG  5.0f
+#define ROTARY_POSITION_COUNT 15
 
 #define FLOW_RATE_ML_PER_MIN 6000
 
@@ -275,6 +275,15 @@ void move_servo_to_position(int position) {
 void calibrate_rotary() {
     Serial.println("Starting rotary calibration...");
     bool all_success = true;
+
+    // for (int i = ROTARY_START_DEG; i > -180+ROTARY_START_DEG; i-=2) {
+    //     Serial.print("Rotating to ");
+    //     Serial.print(i);
+    //     Serial.println("°");
+    //     const int target_us = servo_degrees_to_us(i);
+    //     rotary_servo.writeMicroseconds(target_us);
+    //     delay(1000);
+    // }
 
     for (int i = 0; i < ROTARY_POSITION_COUNT; i++) {
         const float angle = servo_position_to_degrees(i);
