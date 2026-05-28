@@ -34,9 +34,9 @@ class Sprinkler with ChangeNotifier {
   }
 
   void updateWithJson(Map<String, dynamic> json) {
-    _instance._airHumidity = double.parse(json['air_humidity'] ?? "0.0");
-    _instance._airTemperature = double.parse(json['air_temperature'] ?? "0.0");
-    _instance._soilMoisture = double.parse(json['soil_moisture'] ?? "0.0");
+    _instance._airHumidity = _parseDoubleOrNan(json['air_humidity']);
+    _instance._airTemperature = _parseDoubleOrNan(json['air_temperature']);
+    _instance._soilMoisture = _parseDoubleOrNan(json['soil_moisture']);
     _instance._waterPump = json['water_pump'] ?? "off";
     _instance._waterLowAlert = json['water_low_alert'] == "on";
     _instance._blockedAmountMl = int.tryParse(json['blocked_amount_ml'] ?? "0") ?? 0;
@@ -50,5 +50,16 @@ class Sprinkler with ChangeNotifier {
     }
 
     _instance.notifyListeners();
+  }
+
+  double _parseDoubleOrNan(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      if (value == 'nan' || value == 'null' || value.isEmpty) return 0.0;
+      return double.tryParse(value) ?? 0.0;
+    }
+    return 0.0;
   }
 }

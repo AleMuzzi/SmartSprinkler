@@ -24,6 +24,11 @@ class AppState:
         self.weather: WeatherClient | None = None
         self.lock = Lock()
         self.scheduler: BackgroundScheduler | None = None
+        self._cached_weather: dict = {
+            "cloud_cover": "cloudy",
+            "rain_forecast": "no",
+            "temperature": None,
+        }
 
 
 state = AppState()
@@ -62,7 +67,6 @@ class WeatherResponse(BaseModel):
 
 
 class PlantStatusResponse(BaseModel):
-    weather: WeatherResponse
     plants: list[PlantStatus]
 
 
@@ -73,6 +77,12 @@ async def lifespan(app: FastAPI):
     init_db()
     state.scheduler = BackgroundScheduler()
     _schedule_hourly_poll(state, interval_minutes=60)
+    state.scheduler.add_job(
+        func=lambda: _poll_weather(state),
+        trigger=IntervalTrigger(seconds=30),
+        id="weather_poll",
+        replace_existing=True,
+    )
     poll_s = state.config["esp"]["poll_interval"]
     state.scheduler.add_job(
         func=lambda: _inference_cycle(state),
@@ -82,6 +92,7 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
     state.scheduler.start()
+    _poll_weather(state)
     logger.info("API server started — scheduler running")
     yield
     if state.scheduler:
@@ -131,6 +142,13 @@ def _build_evidence_nodes(soil: str, temp: str, humid: str, cloud: str, rain: st
         EvidenceNode(label="Cloud Cover", score=cloud_score, icon="cloud"),
         EvidenceNode(label="Rain Forecast", score=rain_score, icon="cloudy_snowing"),
     ]
+
+
+def _poll_weather(st: AppState):
+    try:
+        st._cached_weather = st.weather.fetch()
+    except Exception:
+        logger.warning("Weather fetch failed — keeping previous cache")
 
 
 def _register_routes(app: FastAPI):
@@ -206,11 +224,6 @@ def _register_routes(app: FastAPI):
         except Exception:
             esp_status = {}
 
-        try:
-            wx = state.weather.fetch()
-        except Exception:
-            wx = {"cloud_cover": "cloudy", "rain_forecast": "no", "temperature": None}
-
         raw_soil = float(esp_status.get("soil_moisture", 0))
         raw_temp = float(esp_status.get("air_temperature", 25))
         raw_humid = float(esp_status.get("air_humidity", 50))
@@ -219,13 +232,6 @@ def _register_routes(app: FastAPI):
         temp = state.esp.discretize_temperature(raw_temp)
         humid = state.esp.discretize_humidity(raw_humid)
 
-        weather = WeatherResponse(
-            temperature=wx.get("temperature"),
-            humidity=raw_humid,
-            cloud_cover=wx["cloud_cover"],
-            rain_forecast=wx["rain_forecast"],
-        )
-
         plants = []
         for plant_name in state.config["plants"]:
             with state.lock:
@@ -233,12 +239,12 @@ def _register_routes(app: FastAPI):
                     plant=plant_name,
                     temperature=temp,
                     humidity=humid,
-                    cloud_cover=wx["cloud_cover"],
+                    cloud_cover=state._cached_weather["cloud_cover"],
                     soil_moisture=soil,
-                    rain_forecast=wx["rain_forecast"],
+                    rain_forecast=state._cached_weather["rain_forecast"],
                 )
 
-            evidence_nodes = _build_evidence_nodes(soil, temp, humid, wx["cloud_cover"], wx["rain_forecast"])
+            evidence_nodes = _build_evidence_nodes(soil, temp, humid, state._cached_weather["cloud_cover"], state._cached_weather["rain_forecast"])
 
             plants.append(PlantStatus(
                 plant_id=plant_name,
@@ -246,7 +252,31 @@ def _register_routes(app: FastAPI):
                 evidence_nodes=evidence_nodes,
             ))
 
-        return PlantStatusResponse(weather=weather, plants=plants)
+        return PlantStatusResponse(plants=plants)
+
+    @app.get(
+        "/api/weather/status",
+        response_model=WeatherResponse,
+        tags=["Weather"],
+        summary="Get current weather data",
+        responses={
+            200: {"description": "Current weather conditions"},
+        },
+    )
+    def get_weather_status():
+        try:
+            esp_status = state.esp.get_status()
+        except Exception:
+            esp_status = {}
+
+        raw_humid = float(esp_status.get("air_humidity", 50))
+
+        return WeatherResponse(
+            temperature=state._cached_weather.get("temperature"),
+            humidity=raw_humid,
+            cloud_cover=state._cached_weather["cloud_cover"],
+            rain_forecast=state._cached_weather["rain_forecast"],
+        )
 
 
 # ── Background jobs ─────────────────────────────────────────────────

@@ -17,7 +17,7 @@ class DashboardViewModel extends ChangeNotifier {
 
   Timer? _espTimer;
   Timer? _bayesianTimer;
-
+  bool _disposed = false;
   List<PlantData> _plants = [];
   List<BayesianPlantStatus> _plantStatuses = [];
   double _averageProbabilityOfNeed = 0.0;
@@ -71,18 +71,25 @@ class DashboardViewModel extends ChangeNotifier {
   void _startPolling() {
     _fetchEspStatus();
     _fetchBayesianStatus();
+    _fetchWeatherStatus();
     _checkConnectivity();
 
-    _espTimer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchEspStatus());
-    _bayesianTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchBayesianStatus());
-    Timer.periodic(const Duration(seconds: 30), (_) => _checkConnectivity());
+    _espTimer = Timer.periodic(const Duration(seconds: 2), (_) => _fetchEspStatus());
+    _bayesianTimer = Timer.periodic(const Duration(seconds: 2), (_) => _fetchBayesianStatus());
+    Timer.periodic(const Duration(seconds: 30), (_) => _fetchWeatherStatus());
+    Timer.periodic(const Duration(seconds: 2), (_) => _checkConnectivity());
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _espTimer?.cancel();
     _bayesianTimer?.cancel();
     super.dispose();
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> _fetchEspStatus() async {
@@ -120,12 +127,12 @@ class DashboardViewModel extends ChangeNotifier {
         }
 
         _espStatus = ConnectivityStatus.connected;
-        notifyListeners();
+        _notify();
       }
     } catch (e) {
       log('ESP status fetch error: $e');
       _espStatus = ConnectivityStatus.disconnected;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -140,7 +147,10 @@ class DashboardViewModel extends ChangeNotifier {
     if (value == null) return 0.0;
     if (value is double) return value;
     if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
+    if (value is String) {
+      if (value == 'nan' || value == 'null' || value.isEmpty) return 0.0;
+      return double.tryParse(value) ?? 0.0;
+    }
     return 0.0;
   }
 
@@ -152,7 +162,6 @@ class DashboardViewModel extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
-        _weather = WeatherData.fromJson(json['weather'] ?? {});
 
         final plantsJson = json['plants'] as List<dynamic>? ?? [];
         _plantStatuses = plantsJson.map((p) => BayesianPlantStatus.fromJson(p)).toList();
@@ -160,23 +169,44 @@ class DashboardViewModel extends ChangeNotifier {
         double sum = 0;
         int count = 0;
         for (final status in _plantStatuses) {
+          debugPrint('Bayesian plant status: ${status.plantId} = ${status.probabilityOfNeed}');
+          if (status.plantId.isEmpty) continue;
           final plant = _plants.firstWhere(
             (pl) => pl.id == status.plantId || pl.target.name.toLowerCase() == status.plantId.toLowerCase(),
             orElse: () => PlantData(id: '', displayName: '', imageUrl: '', target: Target.NAGA_MORICH),
           );
+          if (plant.id.isEmpty) continue;
           plant.probabilityOfNeed = status.probabilityOfNeed;
           sum += status.probabilityOfNeed;
           count++;
         }
         _averageProbabilityOfNeed = count > 0 ? sum / count : 0.0;
+        debugPrint('Average probability of need: $_averageProbabilityOfNeed');
 
         _bayesianStatus = ConnectivityStatus.connected;
-        notifyListeners();
+        _notify();
       }
     } catch (e) {
       log('Bayesian status fetch error: $e');
       _bayesianStatus = ConnectivityStatus.disconnected;
-      notifyListeners();
+      _notify();
+    }
+  }
+
+  Future<void> _fetchWeatherStatus() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${settings.bayesianUrl}/api/weather/status'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        _weather = WeatherData.fromJson(json);
+        debugPrint('Weather updated: temp=${_weather?.temperature}, humidity=${_weather?.humidity}');
+        _notify();
+      }
+    } catch (e) {
+      log('Weather status fetch error: $e');
     }
   }
 
@@ -196,7 +226,7 @@ class DashboardViewModel extends ChangeNotifier {
     } catch (e) {
       _espStatus = ConnectivityStatus.disconnected;
     }
-    notifyListeners();
+    _notify();
   }
 
   Future<void> checkBayesianConnectivity() async {
@@ -210,12 +240,12 @@ class DashboardViewModel extends ChangeNotifier {
     } catch (e) {
       _bayesianStatus = ConnectivityStatus.disconnected;
     }
-    notifyListeners();
+    _notify();
   }
 
   void setOperationMode(OperationMode mode) {
     _operationMode = mode;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> waterPlantNow(PlantData plant) async {
@@ -226,7 +256,7 @@ class DashboardViewModel extends ChangeNotifier {
       if (!success && _bayesianStatus == ConnectivityStatus.disconnected) {
         await _waterDirect(plant);
         await Fluttertoast.showToast(
-          msg: '⚠️ Bayesian offline — watered ${plant.displayName} directly via ESP',
+          msg: 'Warning: Bayesian offline - watered ${plant.displayName} directly via ESP',
           fontSize: 14,
         );
       }
@@ -241,12 +271,18 @@ class DashboardViewModel extends ChangeNotifier {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        await Fluttertoast.showToast(msg: '✅ ${plant.displayName} watering started', fontSize: 16);
+        plant.isWatering = true;
+        _notify();
+        Future.delayed(const Duration(seconds: 20), () {
+          plant.isWatering = false;
+          _notify();
+        });
+        await Fluttertoast.showToast(msg: 'OK: ${plant.displayName} watering started', fontSize: 16);
       } else {
-        await Fluttertoast.showToast(msg: '❌ ESP error: ${response.statusCode}', fontSize: 16);
+        await Fluttertoast.showToast(msg: 'ESP error: ${response.statusCode}', fontSize: 16);
       }
     } catch (e) {
-      await Fluttertoast.showToast(msg: '❌ ESP unreachable', fontSize: 16);
+      await Fluttertoast.showToast(msg: 'ESP unreachable', fontSize: 16);
     }
   }
 
@@ -260,14 +296,20 @@ class DashboardViewModel extends ChangeNotifier {
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        await Fluttertoast.showToast(msg: '✅ ${plant.displayName} watered via Bayesian', fontSize: 16);
+        plant.isWatering = true;
+        _notify();
+        Future.delayed(const Duration(seconds: 20), () {
+          plant.isWatering = false;
+          _notify();
+        });
+        await Fluttertoast.showToast(msg: 'OK: ${plant.displayName} watered via Bayesian', fontSize: 16);
         return true;
       } else {
-        await Fluttertoast.showToast(msg: '❌ Bayesian error: ${response.statusCode}', fontSize: 16);
+        await Fluttertoast.showToast(msg: 'Bayesian error: ${response.statusCode}', fontSize: 16);
         return false;
       }
     } catch (e) {
-      await Fluttertoast.showToast(msg: '❌ Bayesian server unreachable', fontSize: 16);
+      log('Bayesian water error: $e');
       return false;
     }
   }
@@ -279,7 +321,7 @@ class DashboardViewModel extends ChangeNotifier {
         body: Command(target: plant.target, action: Action.STOP).toJson(),
       ).timeout(const Duration(seconds: 10));
       plant.isWatering = false;
-      notifyListeners();
+      _notify();
     } catch (e) {
       log('Stop watering error: $e');
     }
