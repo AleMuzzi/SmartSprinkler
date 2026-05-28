@@ -6,7 +6,7 @@
 #define TEMP_HUMIDITY_SENSOR_H
 
 
-#define DHTPIN 4        // Pin a cui è collegato il sensore
+#define DHTPIN 2        // Pin a cui è collegato il sensore
 #define DHTTYPE DHT22    // Indicazione del modello del sensore
 
 class TempHumiditySensor {
