@@ -23,36 +23,6 @@ class WeatherData {
   }
 }
 
-enum OperationMode {
-  automatic,
-  manual,
-  scheduled,
-}
-
-extension OperationModeExtension on OperationMode {
-  String get displayName {
-    switch (this) {
-      case OperationMode.automatic:
-        return 'Automatic (Bayesian)';
-      case OperationMode.manual:
-        return 'Manual';
-      case OperationMode.scheduled:
-        return 'Scheduled';
-    }
-  }
-
-  String get description {
-    switch (this) {
-      case OperationMode.automatic:
-        return 'Watering decisions made by Bayesian server';
-      case OperationMode.manual:
-        return 'Direct ESP control, no logging';
-      case OperationMode.scheduled:
-        return 'Time-based watering schedule';
-    }
-  }
-}
-
 enum ConnectivityStatus {
   connected,
   disconnected,

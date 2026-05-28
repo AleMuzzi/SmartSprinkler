@@ -4,6 +4,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart' hide Action;
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'package:smartsprinkler_app/data/settings.dart';
 import 'package:smartsprinkler_app/data/sprinkler.dart';
 import 'package:smartsprinkler_app/data/models/plant_data.dart';
@@ -21,7 +22,6 @@ class DashboardViewModel extends ChangeNotifier {
   List<PlantData> _plants = [];
   List<BayesianPlantStatus> _plantStatuses = [];
   double _averageProbabilityOfNeed = 0.0;
-  OperationMode _operationMode = OperationMode.automatic;
   WeatherData? _weather;
   ConnectivityStatus _espStatus = ConnectivityStatus.checking;
   ConnectivityStatus _bayesianStatus = ConnectivityStatus.checking;
@@ -29,7 +29,6 @@ class DashboardViewModel extends ChangeNotifier {
   List<PlantData> get plants => _plants;
   List<BayesianPlantStatus> get plantStatuses => _plantStatuses;
   double get averageProbabilityOfNeed => _averageProbabilityOfNeed;
-  OperationMode get operationMode => _operationMode;
   WeatherData? get weather => _weather;
   ConnectivityStatus get espStatus => _espStatus;
   ConnectivityStatus get bayesianStatus => _bayesianStatus;
@@ -256,23 +255,18 @@ class DashboardViewModel extends ChangeNotifier {
     _notify();
   }
 
-  void setOperationMode(OperationMode mode) {
-    _operationMode = mode;
-    _notify();
-  }
-
-  Future<void> waterPlantNow(PlantData plant) async {
-    if (_operationMode == OperationMode.manual) {
+  Future<void> waterPlantNow(PlantData plant, {bool viaBayesian = true}) async {
+    if (!viaBayesian) {
       await _waterDirect(plant);
-    } else {
-      final success = await _waterViaBayesian(plant);
-      if (!success && _bayesianStatus == ConnectivityStatus.disconnected) {
-        await _waterDirect(plant);
-        await Fluttertoast.showToast(
-          msg: 'Warning: Bayesian offline - watered ${plant.displayName} directly via ESP',
-          fontSize: 14,
-        );
-      }
+      return;
+    }
+    final success = await _waterViaBayesian(plant);
+    if (!success && _bayesianStatus == ConnectivityStatus.disconnected) {
+      await _waterDirect(plant);
+      await Fluttertoast.showToast(
+        msg: 'Bayesian offline — watered ${plant.displayName} directly via ESP',
+        fontSize: 14,
+      );
     }
   }
 
@@ -338,5 +332,32 @@ class DashboardViewModel extends ChangeNotifier {
     } catch (e) {
       log('Stop watering error: $e');
     }
+  }
+
+  static void showWaterDialog(BuildContext context, PlantData plant) {
+    final vm = Provider.of<DashboardViewModel>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Water ${plant.displayName}'),
+        content: const Text('How do you want to water?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              vm.waterPlantNow(plant, viaBayesian: true);
+            },
+            child: const Text('Via Bayesian'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              vm.waterPlantNow(plant, viaBayesian: false);
+            },
+            child: const Text('Direct (ESP)'),
+          ),
+        ],
+      ),
+    );
   }
 }

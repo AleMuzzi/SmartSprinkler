@@ -506,7 +506,7 @@ class _ActionButtonsSection extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => vm.waterPlantNow(plant),
+              onPressed: () => DashboardViewModel.showWaterDialog(context, plant),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2196F3),
                 foregroundColor: Colors.white,
@@ -519,23 +519,25 @@ class _ActionButtonsSection extends StatelessWidget {
               label: const Text('Water Now', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _showStopDialog(context),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFF44336),
-                side: const BorderSide(color: Color(0xFFF44336)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          if (plant.isWatering) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _showStopDialog(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFF44336),
+                  side: const BorderSide(color: Color(0xFFF44336)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                icon: const Icon(Icons.stop),
+                label: const Text('Stop Watering', style: TextStyle(fontWeight: FontWeight.w600)),
               ),
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop Watering', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
-          ),
+          ],
         ],
       ),
     );

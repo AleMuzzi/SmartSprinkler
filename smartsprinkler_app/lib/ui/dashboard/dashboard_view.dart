@@ -130,66 +130,10 @@ class _TopGaugeSection extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ModeBadge(mode: vm.operationMode),
-                  const SizedBox(height: 16),
                   _ConnectivityIndicators(esp: vm.espStatus, bayesian: vm.bayesianStatus),
                 ],
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ModeBadge extends StatelessWidget {
-  final OperationMode mode;
-
-  const _ModeBadge({required this.mode});
-
-  @override
-  Widget build(BuildContext context) {
-    Color bgColor;
-    Color textColor;
-    IconData icon;
-
-    switch (mode) {
-      case OperationMode.automatic:
-        bgColor = const Color(0xFF4CAF50).withValues(alpha: 0.15);
-        textColor = const Color(0xFF2E7D32);
-        icon = Icons.auto_awesome;
-        break;
-      case OperationMode.manual:
-        bgColor = const Color(0xFF2196F3).withValues(alpha: 0.15);
-        textColor = const Color(0xFF1565C0);
-        icon = Icons.touch_app;
-        break;
-      case OperationMode.scheduled:
-        bgColor = const Color(0xFFFF9800).withValues(alpha: 0.15);
-        textColor = const Color(0xFFE65100);
-        icon = Icons.schedule;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: textColor),
-          const SizedBox(width: 6),
-          Text(
-            mode.displayName,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
           ),
         ],
       ),
@@ -430,7 +374,7 @@ class _PlantCard extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => vm.waterPlantNow(plant),
+                      onPressed: () => DashboardViewModel.showWaterDialog(context, plant),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF4CAF50),
                         foregroundColor: Colors.white,
@@ -450,6 +394,7 @@ class _PlantCard extends StatelessWidget {
       ),
     );
   }
+
 }
 
 class _WeatherFooter extends StatelessWidget {
