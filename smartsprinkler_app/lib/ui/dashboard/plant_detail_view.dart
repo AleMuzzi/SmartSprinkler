@@ -142,7 +142,11 @@ class _SoilMoistureBar extends StatelessWidget {
                 height: 12,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFEF4444), Color(0xFFFFC107), Color(0xFF4CAF50)],
+                    colors: [
+                      Color(0xFFEF4444),
+                      Color(0xFFFFC107),
+                      Color(0xFF4CAF50),
+                    ],
                     stops: [0.0, 0.5, 1.0],
                   ),
                   borderRadius: BorderRadius.circular(6),
@@ -155,8 +159,12 @@ class _SoilMoistureBar extends StatelessWidget {
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _barLabel('Dry', 0.0, constraints.maxWidth),
-                      _barLabel('Wet', 1.0, constraints.maxWidth),
+                      Flexible(
+                        child: _barLabel('Dry', 0.0, constraints.maxWidth),
+                      ),
+                      Flexible(
+                        child: _barLabel('Wet', 1.0, constraints.maxWidth),
+                      ),
                     ],
                   );
                 },
@@ -267,7 +275,10 @@ class _ProbabilityGauge extends StatelessWidget {
                         ),
                         const Text(
                           'Need Water',
-                          style: TextStyle(fontSize: 11, color: Color(0xFF718096)),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF718096),
+                          ),
                         ),
                       ],
                     ),
@@ -304,7 +315,6 @@ class _BayesianInsightsSection extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -314,95 +324,107 @@ class _BayesianInsightsSection extends StatelessWidget {
           ),
         ],
       ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-        title: const Row(
-          children: [
-            Icon(Icons.insights, color: Color(0xFF4CAF50), size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Bayesian Insights',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2D3748),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          title: const Row(
+            children: [
+              Icon(Icons.insights, color: Color(0xFF4CAF50), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Bayesian Insights',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3748),
+                ),
               ),
-            ),
+            ],
+          ),
+          children: [
+            if (status.evidenceNodes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'No evidence data available.\nServer must return evidence_nodes breakdown.',
+                  style: TextStyle(color: Color(0xFF718096), fontSize: 13),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                itemCount: status.evidenceNodes.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, color: Color(0xFFE8EDF2)),
+                itemBuilder: (context, index) {
+                  final node = status.evidenceNodes[index];
+                  final isPositive = node.score > 0;
+                  final isNegative = node.score < 0;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _iconForNode(node.icon),
+                          size: 16,
+                          color: isPositive
+                              ? const Color(0xFF4CAF50)
+                              : isNegative
+                              ? const Color(0xFFF44336)
+                              : const Color(0xFFA0AEC0),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            node.label,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF4A5568),
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isPositive
+                                ? const Color(
+                                    0xFF4CAF50,
+                                  ).withValues(alpha: 0.15)
+                                : isNegative
+                                ? const Color(
+                                    0xFFF44336,
+                                  ).withValues(alpha: 0.15)
+                                : const Color(0xFFE8EDF2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isPositive ? '+${node.score}' : '${node.score}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isPositive
+                                  ? const Color(0xFF2E7D32)
+                                  : isNegative
+                                  ? const Color(0xFFC62828)
+                                  : const Color(0xFF718096),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
           ],
         ),
-        children: [
-          if (status.evidenceNodes.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                'No evidence data available.\nServer must return evidence_nodes breakdown.',
-                style: TextStyle(color: Color(0xFF718096), fontSize: 13),
-              ),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              itemCount: status.evidenceNodes.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE8EDF2)),
-              itemBuilder: (context, index) {
-                final node = status.evidenceNodes[index];
-                final isPositive = node.score > 0;
-                final isNegative = node.score < 0;
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _iconForNode(node.icon),
-                        size: 16,
-                        color: isPositive
-                            ? const Color(0xFF4CAF50)
-                            : isNegative
-                                ? const Color(0xFFF44336)
-                                : const Color(0xFFA0AEC0),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          node.label,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF4A5568),
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: isPositive
-                              ? const Color(0xFF4CAF50).withValues(alpha: 0.15)
-                              : isNegative
-                                  ? const Color(0xFFF44336).withValues(alpha: 0.15)
-                                  : const Color(0xFFE8EDF2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          isPositive ? '+${node.score}' : '${node.score}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: isPositive
-                                ? const Color(0xFF2E7D32)
-                                : isNegative
-                                    ? const Color(0xFFC62828)
-                                    : const Color(0xFF718096),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-        ],
       ),
     );
   }
@@ -450,7 +472,10 @@ class _ActionButtonsSection extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
