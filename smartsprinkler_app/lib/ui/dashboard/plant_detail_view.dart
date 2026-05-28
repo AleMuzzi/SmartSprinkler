@@ -126,30 +126,26 @@ class _SoilMoistureBar extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Stack(
           children: [
             Container(
-              height: 12,
+              height: 8,
               decoration: BoxDecoration(
                 color: const Color(0xFFE8EDF2),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(4),
               ),
             ),
             FractionallySizedBox(
-              widthFactor: (moisture / 100).clamp(0.0, 1.0),
+              widthFactor: moisture / 100,
               child: Container(
-                height: 12,
+                height: 8,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFFEF4444),
-                      Color(0xFFFFC107),
-                      Color(0xFF4CAF50),
-                    ],
+                    colors: [Color(0xFFF44336), Color(0xFFFFC107), Color(0xFF4CAF50)],
                     stops: [0.0, 0.5, 1.0],
                   ),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
             ),
@@ -159,12 +155,8 @@ class _SoilMoistureBar extends StatelessWidget {
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Flexible(
-                        child: _barLabel('Dry', 0.0, constraints.maxWidth),
-                      ),
-                      Flexible(
-                        child: _barLabel('Wet', 1.0, constraints.maxWidth),
-                      ),
+                      Flexible(child: _barLabel('Dry', 0.0, constraints.maxWidth)),
+                      Flexible(child: _barLabel('Wet', 1.0, constraints.maxWidth)),
                     ],
                   );
                 },
@@ -226,23 +218,19 @@ class _ProbabilityGauge extends StatelessWidget {
                 endAngle: 0,
                 showLabels: false,
                 showTicks: false,
-                radiusFactor: 0.85,
+                radiusFactor: 0.9,
                 axisLineStyle: const AxisLineStyle(
-                  thickness: 0.2,
+                  thickness: 0.15,
                   thicknessUnit: GaugeSizeUnit.factor,
                   color: Color(0xFFE8EDF2),
                 ),
                 pointers: <GaugePointer>[
                   RangePointer(
                     value: probability,
-                    width: 0.2,
+                    width: 0.15,
                     sizeUnit: GaugeSizeUnit.factor,
                     gradient: SweepGradient(
-                      colors: [
-                        const Color(0xFF4CAF50),
-                        const Color(0xFFFFC107),
-                        const Color(0xFFF44336),
-                      ],
+                      colors: const [Color(0xFF4CAF50), Color(0xFFFFC107), Color(0xFFF44336)],
                       stops: const [0.0, 0.5, 1.0],
                     ),
                   ),
@@ -251,12 +239,12 @@ class _ProbabilityGauge extends StatelessWidget {
                     needleLength: 0.6,
                     lengthUnit: GaugeSizeUnit.factor,
                     needleStartWidth: 1,
-                    needleEndWidth: 5,
-                    needleColor: needleColor,
-                    knobStyle: KnobStyle(
-                      knobRadius: 0.1,
+                    needleEndWidth: 4,
+                    needleColor: const Color(0xFF2D3748),
+                    knobStyle: const KnobStyle(
+                      knobRadius: 0.08,
                       sizeUnit: GaugeSizeUnit.factor,
-                      color: needleColor,
+                      color: Color(0xFF2D3748),
                     ),
                   ),
                 ],
@@ -275,10 +263,7 @@ class _ProbabilityGauge extends StatelessWidget {
                         ),
                         const Text(
                           'Need Water',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF718096),
-                          ),
+                          style: TextStyle(fontSize: 11, color: Color(0xFF718096)),
                         ),
                       ],
                     ),
@@ -329,17 +314,22 @@ class _BayesianInsightsSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.insights, color: Color(0xFF4CAF50), size: 20),
-              SizedBox(width: 8),
-              Text(
+              const Icon(Icons.insights, color: Color(0xFF4CAF50), size: 20),
+              const SizedBox(width: 8),
+              const Text(
                 'Bayesian Insights',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF2D3748),
                 ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.info_outline, size: 18, color: Color(0xFF718096)),
+                onPressed: () => _showBayesianInfoDialog(context),
               ),
             ],
           ),
@@ -358,8 +348,7 @@ class _BayesianInsightsSection extends StatelessWidget {
                 physics: const NeverScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 itemCount: status.evidenceNodes.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, color: Color(0xFFE8EDF2)),
+                separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE8EDF2)),
                 itemBuilder: (context, index) {
                   final node = status.evidenceNodes[index];
                   final isPositive = node.score > 0;
@@ -375,8 +364,8 @@ class _BayesianInsightsSection extends StatelessWidget {
                           color: isPositive
                               ? const Color(0xFF4CAF50)
                               : isNegative
-                              ? const Color(0xFFF44336)
-                              : const Color(0xFFA0AEC0),
+                                  ? const Color(0xFFF44336)
+                                  : const Color(0xFFA0AEC0),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -389,20 +378,13 @@ class _BayesianInsightsSection extends StatelessWidget {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: isPositive
-                                ? const Color(
-                                    0xFF4CAF50,
-                                  ).withValues(alpha: 0.15)
+                                ? const Color(0xFF4CAF50).withValues(alpha: 0.15)
                                 : isNegative
-                                ? const Color(
-                                    0xFFF44336,
-                                  ).withValues(alpha: 0.15)
-                                : const Color(0xFFE8EDF2),
+                                    ? const Color(0xFFF44336).withValues(alpha: 0.15)
+                                    : const Color(0xFFE8EDF2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -413,8 +395,8 @@ class _BayesianInsightsSection extends StatelessWidget {
                               color: isPositive
                                   ? const Color(0xFF2E7D32)
                                   : isNegative
-                                  ? const Color(0xFFC62828)
-                                  : const Color(0xFF718096),
+                                      ? const Color(0xFFC62828)
+                                      : const Color(0xFF718096),
                             ),
                           ),
                         ),
@@ -445,6 +427,68 @@ class _BayesianInsightsSection extends StatelessWidget {
         return Icons.info;
     }
   }
+
+  void _showBayesianInfoDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('How Bayesian Watering Works'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Probability of Need', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              SizedBox(height: 4),
+              Text('The chance your plant needs water, computed from multiple sensor factors using a Bayesian network.', style: TextStyle(fontSize: 13)),
+              SizedBox(height: 16),
+              Text('Evidence Nodes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              SizedBox(height: 8),
+              _InfoRow(icon: Icons.water_drop, label: 'Soil Moisture', desc: 'Dry soil = higher need. Wet soil = lower need.'),
+              _InfoRow(icon: Icons.thermostat, label: 'Temperature', desc: 'High temp increases evaporation risk.'),
+              _InfoRow(icon: Icons.air, label: 'Humidity', desc: 'Low humidity means faster water loss.'),
+              _InfoRow(icon: Icons.cloud, label: 'Cloud Cover', desc: 'Clear sky = more evaporation.'),
+              _InfoRow(icon: Icons.cloudy_snowing, label: 'Rain Forecast', desc: 'Rain expected soon = watering skipped.'),
+              SizedBox(height: 16),
+              Text('Scores range from -100 to +100. Positive drives need higher. Negative reduces need.', style: TextStyle(fontSize: 12, color: Color(0xFF718096))),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Got it')),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String desc;
+  const _InfoRow({required this.icon, required this.label, required this.desc});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF4CAF50)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF718096))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ActionButtonsSection extends StatelessWidget {
@@ -463,41 +507,58 @@ class _ActionButtonsSection extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () => vm.waterPlantNow(plant),
-              icon: const Icon(Icons.water_drop),
-              label: const Text('Manual Override & Water'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2196F3),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
+              icon: const Icon(Icons.water_drop),
+              label: const Text('Water Now', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
           ),
-          if (plant.isWatering) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => vm.stopWatering(plant),
-                icon: const Icon(Icons.stop_circle),
-                label: const Text('Stop Watering'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFF44336),
-                  side: const BorderSide(color: Color(0xFFF44336)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showStopDialog(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFF44336),
+                side: const BorderSide(color: Color(0xFFF44336)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
+              icon: const Icon(Icons.stop),
+              label: const Text('Stop Watering', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showStopDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Stop Watering'),
+        content: Text('Stop watering ${plant.displayName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              vm.stopWatering(plant);
+              Navigator.pop(context);
+            },
+            child: const Text('Stop', style: TextStyle(color: Color(0xFFF44336))),
+          ),
         ],
       ),
     );
