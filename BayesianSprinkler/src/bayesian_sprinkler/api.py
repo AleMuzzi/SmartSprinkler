@@ -36,10 +36,34 @@ POLL_INTERVALS = {
 DEFAULT_INTERVAL = 30
 
 
-# ── Request models ──────────────────────────────────────────────────
+# ── Request / Response models ────────────────────────────────────────
 
 class ManualWaterRequest(BaseModel):
     plant_type: str
+
+
+class EvidenceNode(BaseModel):
+    label: str
+    score: int
+    icon: str
+
+
+class PlantStatus(BaseModel):
+    plant_id: str
+    probability_of_need: float
+    evidence_nodes: list[EvidenceNode]
+
+
+class WeatherResponse(BaseModel):
+    temperature: float | None
+    humidity: float | None
+    cloud_cover: str
+    rain_forecast: str
+
+
+class PlantStatusResponse(BaseModel):
+    weather: WeatherResponse
+    plants: list[PlantStatus]
 
 
 # ── Lifespan ────────────────────────────────────────────────────────
@@ -93,8 +117,33 @@ def create_app(config: dict) -> FastAPI:
     return app
 
 
+def _build_evidence_nodes(soil: str, temp: str, humid: str, cloud: str, rain: str) -> list[EvidenceNode]:
+    soil_score = {"dry": 100, "moist": 30, "wet": 0}[soil]
+    temp_score = {"high": 80, "medium": 40, "low": 0}[temp]
+    humid_score = {"low": 60, "medium": 30, "high": 0}[humid]
+    cloud_score = {"clear": 50, "cloudy": 0}[cloud]
+    rain_score = {"no": 20, "yes": -60}[rain]
+
+    return [
+        EvidenceNode(label="Soil Moisture", score=soil_score, icon="water_drop"),
+        EvidenceNode(label="Temperature", score=temp_score, icon="thermostat"),
+        EvidenceNode(label="Humidity", score=humid_score, icon="air"),
+        EvidenceNode(label="Cloud Cover", score=cloud_score, icon="cloud"),
+        EvidenceNode(label="Rain Forecast", score=rain_score, icon="cloudy_snowing"),
+    ]
+
+
 def _register_routes(app: FastAPI):
-    @app.post("/api/plants/manual-water")
+    @app.post(
+        "/api/plants/manual-water",
+        tags=["Plants"],
+        summary="Trigger manual watering for a plant",
+        responses={
+            200: {"description": "Watering triggered successfully"},
+            422: {"description": "Unknown plant type"},
+            503: {"description": "Water level low — blocked"},
+        },
+    )
     def manual_water(req: ManualWaterRequest):
         if req.plant_type not in state.config["plants"]:
             raise HTTPException(422, f"Unknown plant: {req.plant_type}")
@@ -133,9 +182,71 @@ def _register_routes(app: FastAPI):
 
         return {"status": "ok", "plant": req.plant_type}
 
-    @app.get("/api/health")
+    @app.get(
+        "/api/health",
+        tags=["System"],
+        summary="Health check",
+        responses={200: {"description": "Server is healthy"}},
+    )
     def health():
         return {"status": "ok"}
+
+    @app.get(
+        "/api/plants/status",
+        response_model=PlantStatusResponse,
+        tags=["Plants"],
+        summary="Get plant statuses with probability of need",
+        responses={
+            200: {"description": "Current status for all plants with evidence breakdown"},
+        },
+    )
+    def get_plant_status():
+        try:
+            esp_status = state.esp.get_status()
+        except Exception:
+            esp_status = {}
+
+        try:
+            wx = state.weather.fetch()
+        except Exception:
+            wx = {"cloud_cover": "cloudy", "rain_forecast": "no", "temperature": None}
+
+        raw_soil = float(esp_status.get("soil_moisture", 0))
+        raw_temp = float(esp_status.get("air_temperature", 25))
+        raw_humid = float(esp_status.get("air_humidity", 50))
+
+        soil = state.esp.discretize_soil_moisture(raw_soil)
+        temp = state.esp.discretize_temperature(raw_temp)
+        humid = state.esp.discretize_humidity(raw_humid)
+
+        weather = WeatherResponse(
+            temperature=wx.get("temperature"),
+            humidity=raw_humid,
+            cloud_cover=wx["cloud_cover"],
+            rain_forecast=wx["rain_forecast"],
+        )
+
+        plants = []
+        for plant_name in state.config["plants"]:
+            with state.lock:
+                prob = state.bn.query(
+                    plant=plant_name,
+                    temperature=temp,
+                    humidity=humid,
+                    cloud_cover=wx["cloud_cover"],
+                    soil_moisture=soil,
+                    rain_forecast=wx["rain_forecast"],
+                )
+
+            evidence_nodes = _build_evidence_nodes(soil, temp, humid, wx["cloud_cover"], wx["rain_forecast"])
+
+            plants.append(PlantStatus(
+                plant_id=plant_name,
+                probability_of_need=round(prob, 2),
+                evidence_nodes=evidence_nodes,
+            ))
+
+        return PlantStatusResponse(weather=weather, plants=plants)
 
 
 # ── Background jobs ─────────────────────────────────────────────────

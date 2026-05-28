@@ -2,7 +2,7 @@ class Settings {
   static final Settings _instance = Settings._();
 
   String apiBaseUrl = "http://192.168.1.10";
-  String bayesianServerUrl = "http://192.168.1.11:8080";
+  String bayesianServerUrl = "http://192.168.1.7:8080";
 
   Settings._();
 
