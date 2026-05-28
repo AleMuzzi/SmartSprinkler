@@ -93,10 +93,13 @@ class DashboardViewModel extends ChangeNotifier {
   }
 
   Future<void> _fetchEspStatus() async {
+    debugPrint('[_fetchEspStatus] URL: ${settings.apiUrl}/status');
     try {
       final response = await http.get(
         Uri.parse('${settings.apiUrl}/status'),
       ).timeout(const Duration(seconds: 5));
+
+      debugPrint('[_fetchEspStatus] status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -155,10 +158,14 @@ class DashboardViewModel extends ChangeNotifier {
   }
 
   Future<void> _fetchBayesianStatus() async {
+    debugPrint('[_fetchBayesianStatus] URL: ${settings.bayesianUrl}/api/plants/status');
     try {
       final response = await http.get(
         Uri.parse('${settings.bayesianUrl}/api/plants/status'),
       ).timeout(const Duration(seconds: 10));
+
+      debugPrint('[_fetchBayesianStatus] status code: ${response.statusCode}');
+      debugPrint('[_fetchBayesianStatus] body: ${response.body.substring(0, response.body.length.clamp(0, 200))}');
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -166,10 +173,12 @@ class DashboardViewModel extends ChangeNotifier {
         final plantsJson = json['plants'] as List<dynamic>? ?? [];
         _plantStatuses = plantsJson.map((p) => BayesianPlantStatus.fromJson(p)).toList();
 
+        debugPrint('[_fetchBayesianStatus] plants count: ${_plantStatuses.length}');
+
         double sum = 0;
         int count = 0;
         for (final status in _plantStatuses) {
-          debugPrint('Bayesian plant status: ${status.plantId} = ${status.probabilityOfNeed}');
+          debugPrint('[_fetchBayesianStatus] plant: ${status.plantId} = ${status.probabilityOfNeed}');
           if (status.plantId.isEmpty) continue;
           final plant = _plants.firstWhere(
             (pl) => pl.id == status.plantId || pl.target.name.toLowerCase() == status.plantId.toLowerCase(),
@@ -181,7 +190,7 @@ class DashboardViewModel extends ChangeNotifier {
           count++;
         }
         _averageProbabilityOfNeed = count > 0 ? sum / count : 0.0;
-        debugPrint('Average probability of need: $_averageProbabilityOfNeed');
+        debugPrint('[_fetchBayesianStatus] average: $_averageProbabilityOfNeed');
 
         _bayesianStatus = ConnectivityStatus.connected;
         _notify();
@@ -194,15 +203,19 @@ class DashboardViewModel extends ChangeNotifier {
   }
 
   Future<void> _fetchWeatherStatus() async {
+    debugPrint('[_fetchWeatherStatus] URL: ${settings.bayesianUrl}/api/weather/status');
     try {
       final response = await http.get(
         Uri.parse('${settings.bayesianUrl}/api/weather/status'),
       ).timeout(const Duration(seconds: 10));
 
+      debugPrint('[_fetchWeatherStatus] status: ${response.statusCode}');
+      debugPrint('[_fetchWeatherStatus] body: ${response.body}');
+
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         _weather = WeatherData.fromJson(json);
-        debugPrint('Weather updated: temp=${_weather?.temperature}, humidity=${_weather?.humidity}');
+        debugPrint('[_fetchWeatherStatus] weather: temp=${_weather?.temperature}, humidity=${_weather?.humidity}');
         _notify();
       }
     } catch (e) {

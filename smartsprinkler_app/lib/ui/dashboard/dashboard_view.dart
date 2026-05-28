@@ -74,7 +74,7 @@ class _TopGaugeSection extends StatelessWidget {
                       ),
                       pointers: <GaugePointer>[
                         RangePointer(
-                          value: vm.averageProbabilityOfNeed.clamp(0, 100),
+                          value: (vm.averageProbabilityOfNeed * 100).clamp(0, 100),
                           width: 0.15,
                           sizeUnit: GaugeSizeUnit.factor,
                           gradient: const SweepGradient(
@@ -83,7 +83,7 @@ class _TopGaugeSection extends StatelessWidget {
                           ),
                         ),
                         NeedlePointer(
-                          value: vm.averageProbabilityOfNeed.clamp(0, 100),
+                          value: (vm.averageProbabilityOfNeed * 100).clamp(0, 100),
                           needleLength: 0.6,
                           lengthUnit: GaugeSizeUnit.factor,
                           needleStartWidth: 1,
@@ -102,7 +102,7 @@ class _TopGaugeSection extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '${vm.averageProbabilityOfNeed.toInt()}%',
+                                '${(vm.averageProbabilityOfNeed * 100).round()}%',
                                 style: const TextStyle(
                                   fontSize: 32,
                                   fontWeight: FontWeight.bold,
@@ -314,9 +314,9 @@ class _PlantCard extends StatelessWidget {
     final vm = context.read<DashboardViewModel>();
 
     Color needColor;
-    if (plant.probabilityOfNeed >= 70) {
+    if (plant.probabilityOfNeed >= 0.70) {
       needColor = const Color(0xFFF44336);
-    } else if (plant.probabilityOfNeed >= 40) {
+    } else if (plant.probabilityOfNeed >= 0.40) {
       needColor = const Color(0xFFFFC107);
     } else {
       needColor = const Color(0xFF4CAF50);
@@ -391,7 +391,7 @@ class _PlantCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '${plant.probabilityOfNeed.toInt()}% Need',
+                          '${(plant.probabilityOfNeed * 100).round()}% Need',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

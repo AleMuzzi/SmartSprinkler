@@ -88,7 +88,7 @@ class _SensorAndProbabilitySection extends StatelessWidget {
           const SizedBox(height: 20),
           _SoilMoistureBar(moisture: plant.soilMoisture.clamp(0, 100)),
           const SizedBox(height: 24),
-          _ProbabilityGauge(probability: plant.probabilityOfNeed.clamp(0, 100)),
+          _ProbabilityGauge(probability: (plant.probabilityOfNeed * 100).clamp(0, 100)),
         ],
       ),
     );
