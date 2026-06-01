@@ -55,9 +55,9 @@ graph TB
         DB[(SQLite<br/>sensor_history)]
     end
 
-    subgraph "Mobile App (Flutter)"
-        APP[Settings Page<br/>ESP URL + Bayesian URL]
-        HOME[Home Page<br/>Start / Stop Irrigation]
+    subgraph "Clients"
+        WEB{{"Web Frontend (React)"}}
+        APP{{"Mobile App (Flutter)"}}
     end
 
     subgraph "ESP32 (:80)"
@@ -69,10 +69,12 @@ graph TB
         WX[Open-Meteo API<br/>cloud cover, rain forecast]
     end
 
+    WEB -->|configures| ESP_STAT
+    WEB -->|configures| API
     APP -->|configures| ESP_STAT
     APP -->|configures| API
-    HOME -->|POST /command| ESP_CMD
-    HOME -->|async POST| API
+    WEB -->|POST /command| ESP_CMD
+    APP -->|POST /command| ESP_CMD
 
     SCHED -->|every 120s| ESP_STAT
     SCHED -->|every 1h| WX
@@ -86,6 +88,8 @@ graph TB
 
     DB -->|refine_weights.py<br/>weekly cron| BN
 ```
+
+> **CORS**: The FastAPI server has `CORSMiddleware(allow_origins=["*"])` enabled so the web frontend (served on a different port) can call it without browser restrictions.
 
 ### Node states
 
@@ -157,7 +161,9 @@ Starts a FastAPI server (default `http://0.0.0.0:8080`) with:
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/health` | GET | Health check |
-| `/api/plants/manual-water` | POST | Log a human-triggered watering event + water the plant |
+| `/api/plants/status` | GET | Returns per-plant `probability_of_need` (0–1 scale) + weather context |
+| `/api/weather/status` | GET | Returns cached weather data from Open-Meteo (cloud cover, rain forecast, temperature, humidity) |
+| `/api/plants/manual-water` | POST | Log a human-triggered watering event (`need_water=yes`); then triggers ESP via `POST /command` |
 
 ### Background jobs (APScheduler)
 
@@ -197,15 +203,14 @@ posterior  =  (expert_CPT × prior_strength  +  empirical_counts)
 - `prior_strength` (default 50) controls how much weight the expert prior keeps. Lower values = data dominates faster.
 - Output: `data/refined_model.pkl` (pickled `DiscreteBayesianNetwork`)
 
-### Manual watering (mobile app integration)
+### Manual watering (web + mobile integration)
 
-When the user taps "Start Irrigation" in the Flutter app, it:
+When the user triggers watering via the web frontend (Control tab) or Flutter app, the routing mode determines the path:
 
-1. Sends `POST /api/plants/manual-water` to the Bayesian server (with `plant_type` in body)
-2. The server snapshots current sensor + weather data with `need_water=yes`
-3. Then sends `POST /command` to the ESP to open the relay
+- **Via Bayesian (toggle ON)**: Sends `POST /api/plants/manual-water` → server logs event with `need_water=yes`, then sends `POST /command` to ESP
+- **Direct ESP (toggle OFF)**: Client sends `POST /command` directly to ESP (bypasses Bayesian server — used when server is offline)
 
-Configure the Bayesian server URL in the mobile app's Settings page.
+The web frontend's Control tab exposes this choice explicitly via the **Direct ESP / Via Bayesian** toggle. Configure URLs in the **Settings** tab (persisted to `localStorage`).
 
 ## Requirements
 
@@ -213,3 +218,35 @@ Configure the Bayesian server URL in the mobile app's Settings page.
 - ESP32 running the [SmartSprinkler firmware](../firmware) with reachable HTTP API
 - Sensors: HW-390 (soil moisture), DHT22 (temp/humidity)
 - Internet access (for Open-Meteo weather API)
+
+## Web Frontend
+
+A React-based web dashboard is provided in [`./web_frontend`](./web_frontend/README.md) for browser-based monitoring and control.
+
+### Running
+
+```bash
+cd web_frontend
+npm install
+npm run dev     # development server at http://localhost:3000
+npm run build   # production build
+```
+
+Or via Docker (from the project root):
+
+```bash
+docker compose up web-frontend
+# → http://localhost:3000
+```
+
+### Features
+
+| Tab | Description |
+|---|---|
+| **Dashboard** | Real-time ESP telemetry (temp, humidity, soil moisture, pump status), weather context from Open-Meteo, per-plant Bayesian need probabilities |
+| **Control** | Plant selector, Direct ESP / Via Bayesian routing toggle, Start/Stop buttons, dispense amount (ml) presets |
+| **Settings** | ESP32 URL, Bayesian Server URL, polling interval — persisted to browser `localStorage` |
+
+### CORS
+
+The Bayesian server has `CORSMiddleware(allow_origins=["*"])` enabled so the web frontend can call its API from any browser origin. The ESP32 firmware must also permit cross-origin requests (Mongoose HTTP server allows this by default for simple requests).

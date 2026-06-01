@@ -4,14 +4,28 @@ services:
     container_name: bayesian-server
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "38080:8080"
     volumes:
       - ./data:/app/data
       - ./scripts:/app/scripts:ro
     environment:
       - PYTHONUNBUFFERED=1
       - VALIDATION_SCHEDULE=0 6 * * *  # supercronic crontab format: daily at 06:00
-    network_mode: host
+    networks:
+      - sprinkler-net
+
+  web-frontend:
+    build: ./web_frontend
+    container_name: smartsprinkler-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - sprinkler-net
+
+networks:
+  sprinkler-net:
+    driver: bridge
 
   # Optional: mock ESP32 for local development/testing
   # mock-esp:

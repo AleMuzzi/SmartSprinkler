@@ -18,6 +18,84 @@ PlatformIO project for the ESP32-CAM board that controls the irrigation pump, ro
 
 > **GPIO 15 and 16 are free** — previously used for valve relays 2 and 3.
 
+### Wiring Diagram
+
+```mermaid
+graph TB
+    subgraph ESP32["🟡 ESP32-CAM (Main Controller)"]
+        GPIO2["🔌 GPIO 2<br>DHT22 DATA"]
+        GPIO12["🔌 GPIO 12<br>Pump Relay IN"]
+        GPIO13["🔌 GPIO 13<br>Servo PWM"]
+        GPIO4["🔌 GPIO 4<br>ADS1115 SCL"]
+        GPIO14["🔌 GPIO 14<br>ADS1115 SDA"]
+        5V["🔌 5V rail"]
+        GND["🔌 GND"]
+    end
+
+    subgraph Required["✅ Required Components"]
+        DHT22["🌡️ DHT22<br>Temp + Humidity<br><small>┬ VCC (1)<br>├ DATA (2)<br>├ NC (3)<br>└ GND (4)</small>"]
+        PUMP_RELAY["⚡ Pump Relay Module<br>(Active HIGH)<br><small>┬ VCC (1)<br>├ IN (2) → GPIO12<br>├ GND (3)<br>└ NO/COM (pump)</small>"]
+        SERVO["🔄 SG90 Servo<br>Rotary Selector<br><small>┬ VCC (1) → 5V<br>├ GND (2) → GND<br>└ PWM (3) → GPIO13</small>"]
+        ADS1115["📊 ADS1115<br>4-Ch 16-bit ADC<br><small>┬ VDD (1) → 3.3V<br>├ GND (2) → GND<br>├ SCL (3) → GPIO4<br>├ SDA (4) → GPIO14<br>├ AIN0 (5) → SM1<br>├ AIN1 (6) → SM2<br>├ AIN2 (7) → SM3<br>└ AIN3 (8) → SM4</small>"]
+    end
+
+    subgraph SoilSensors["🌱 Soil Moisture Sensors (×4)"]
+        SM1["💧 HW-390 #1<br>Habanero<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN0</small>"]
+        SM2["💧 HW-390 #2<br>Naga Morich<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN1</small>"]
+        SM3["💧 HW-390 #3<br>Carolina Reaper<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN2</small>"]
+        SM4["💧 HW-390 #4<br>Rosmarino<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN3</small>"]
+    end
+
+    subgraph Optional["⚪ Optional Components"]
+        AMS1117["🔌 AMS1117<br>5→3.3V Regulator<br><small>┬ VIN → 5V rail<br>├ GND → GND<br>└ VOUT → 3.3V</small>"]
+        WATER_LEVEL["💧 Water Level<br>Float Switch<br><small>┬ VCC<br>├ GND<br>└ SIG → ESP GPIO? (TBD)</small>"]
+        FLOW_METER["📏 YF-S401 Flow Meter<br><small>┬ VCC (red)<br>├ GND (black)<br>└ SIG (yellow) → ESP GPIO? (TBD)</small>"]
+    end
+
+    GPIO2 ==> DHT22
+    GPIO12 ==> PUMP_RELAY
+    GPIO13 ==> SERVO
+    GPIO4 ==>|"SCL"| ADS1115
+    GPIO14 ==>|"SDA"| ADS1115
+    5V ==>|"5V"| PUMP_RELAY
+    5V ==>|"5V"| SERVO
+    5V ==>|"5V"| DHT22
+    GND ==>|"GND"| DHT22
+    GND ==>|"GND"| PUMP_RELAY
+    GND ==>|"GND"| SERVO
+    GND ==>|"GND"| ADS1115
+    ADS1115 ==>|"AIN0"| SM1
+    ADS1115 ==>|"AIN1"| SM2
+    ADS1115 ==>|"AIN2"| SM3
+    ADS1115 ==>|"AIN3"| SM4
+
+    AMS1117 -.->|"optional<br>3.3V power"| ADS1115
+    AMS1117 -.->|"optional<br>3.3V power"| SM1
+    AMS1117 -.->|"optional<br>3.3V power"| SM2
+    AMS1117 -.->|"optional<br>3.3V power"| SM3
+    AMS1117 -.->|"optional<br>3.3V power"| SM4
+    WATER_LEVEL -.->|"signal"| ESP32
+    FLOW_METER -.->|"signal"| ESP32
+
+    classDef esp32 fill:#FFF9C4,stroke:#F9A825
+    classDef required fill:#E8F5E9,stroke:#2E7D32
+    classDef sensor fill:#E3F2FD,stroke:#1565C0
+    classDef optional fill:#F5F5F5,stroke:#9E9E9E,stroke-dasharray:5 5
+    classDef gpio fill:#FCE4EC,stroke:#AD1457
+    classDef pwr fill:#FFEBEE,stroke:#C62828
+    classDef gnd fill:#ECEFF1,stroke:#607D8B
+
+    class GPIO2,GPIO12,GPIO13,GPIO4,GPIO14,5V,GND esp32
+    class DHT22,PUMP_RELAY,SERVO,ADS1115 required
+    class SM1,SM2,SM3,SM4 sensor
+    class AMS1117,WATER_LEVEL,FLOW_METER optional
+```
+
+**Legend:**
+- `==>` = required power + signal connection
+- `-.->` = optional connection (not yet implemented in firmware)
+- Pin numbers shown in `<small>` as `┬ ├ └` tree (component top = pin 1)
+
 ### Rotary Selector — Plant Mapping
 
 The SG90 servo rotates a 3D-printed water path selector (Instructables: *Water Path Selector*) to direct water from a single input to one of 4 output ports. Each output connects to a different plant's drip line.

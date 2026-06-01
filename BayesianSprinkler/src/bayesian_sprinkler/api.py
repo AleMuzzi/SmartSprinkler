@@ -7,6 +7,7 @@ import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
@@ -124,6 +125,13 @@ def create_app(config: dict) -> FastAPI:
         cloud_threshold=config["weather"]["cloud_cover_threshold"],
     )
     app = FastAPI(lifespan=lifespan, title="BayesianSprinkler")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     _register_routes(app)
     return app
 

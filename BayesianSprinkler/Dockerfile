@@ -29,6 +29,6 @@ COPY crontab /crontab
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
 
-EXPOSE 8080
+EXPOSE 38080
 
 CMD ["/bin/bash", "-c", "supercronic /crontab &>/dev/null & exec uv run bayesian-sprinkler"]
