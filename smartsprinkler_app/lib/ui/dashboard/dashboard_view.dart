@@ -12,28 +12,16 @@ class DashboardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => DashboardViewModel(),
-      child: const _DashboardViewContent(),
-    );
-  }
-}
-
-class _DashboardViewContent extends StatelessWidget {
-  const _DashboardViewContent();
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: SafeArea(
         child: Column(
           children: [
             _TopGaugeSection(),
-            const Divider(height: 1, color: Color(0xFFE0E4E8)),
-            const Expanded(child: _PlantCarousel()),
-            const Divider(height: 1, color: Color(0xFFE0E4E8)),
-            const _WeatherFooter(),
+            Divider(height: 1, color: Color(0xFFE0E4E8)),
+            Expanded(child: _PlantCarousel()),
+            Divider(height: 1, color: Color(0xFFE0E4E8)),
+            _WeatherFooter(),
           ],
         ),
       ),
@@ -271,7 +259,10 @@ class _PlantCard extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => PlantDetailView(plant: plant),
+            builder: (_) => ChangeNotifierProvider.value(
+              value: context.read<DashboardViewModel>(),
+              child: PlantDetailView(plant: plant),
+            ),
           ),
         );
       },

@@ -12,8 +12,9 @@ class PlantDetailView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => DashboardViewModel(),
+    final vm = context.read<DashboardViewModel>();
+    return ChangeNotifierProvider.value(
+      value: vm,
       child: _PlantDetailContent(plant: plant),
     );
   }
@@ -491,11 +492,36 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _ActionButtonsSection extends StatelessWidget {
+class _ActionButtonsSection extends StatefulWidget {
   final PlantData plant;
   final DashboardViewModel vm;
 
   const _ActionButtonsSection({required this.plant, required this.vm});
+
+  @override
+  State<_ActionButtonsSection> createState() => _ActionButtonsSectionState();
+}
+
+class _ActionButtonsSectionState extends State<_ActionButtonsSection> {
+  final TextEditingController _amountController = TextEditingController();
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  void _dispenseAmount() {
+    final amount = int.tryParse(_amountController.text);
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid amount in ml')),
+      );
+      return;
+    }
+    widget.vm.dispenseAmount(widget.plant, amount);
+    _amountController.clear();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -503,10 +529,48 @@ class _ActionButtonsSection extends StatelessWidget {
       margin: const EdgeInsets.all(16),
       child: Column(
         children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Amount (ml)',
+                    hintText: 'e.g. 100',
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    suffixText: 'ml',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _dispenseAmount,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                ),
+                child: const Icon(Icons.water_drop),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _PresetChip(label: '50ml', onTap: () { _amountController.text = '50'; _dispenseAmount(); }),
+              const SizedBox(width: 8),
+              _PresetChip(label: '100ml', onTap: () { _amountController.text = '100'; _dispenseAmount(); }),
+              const SizedBox(width: 8),
+              _PresetChip(label: '200ml', onTap: () { _amountController.text = '200'; _dispenseAmount(); }),
+            ],
+          ),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => DashboardViewModel.showWaterDialog(context, plant),
+              onPressed: () => DashboardViewModel.showWaterDialog(context, widget.plant),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2196F3),
                 foregroundColor: Colors.white,
@@ -519,7 +583,7 @@ class _ActionButtonsSection extends StatelessWidget {
               label: const Text('Water Now', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
           ),
-          if (plant.isWatering) ...[
+          if (widget.plant.isWatering) ...[
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
@@ -548,7 +612,7 @@ class _ActionButtonsSection extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Stop Watering'),
-        content: Text('Stop watering ${plant.displayName}?'),
+        content: Text('Stop watering ${widget.plant.displayName}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -556,12 +620,34 @@ class _ActionButtonsSection extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              vm.stopWatering(plant);
+              widget.vm.stopWatering(widget.plant);
               Navigator.pop(context);
             },
             child: const Text('Stop', style: TextStyle(color: Color(0xFFF44336))),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PresetChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _PresetChip({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE3F2FD),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(label, style: const TextStyle(color: Color(0xFF1976D2), fontWeight: FontWeight.w500)),
       ),
     );
   }

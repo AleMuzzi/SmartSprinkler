@@ -73,10 +73,10 @@ class DashboardViewModel extends ChangeNotifier {
     _fetchWeatherStatus();
     _checkConnectivity();
 
-    _espTimer = Timer.periodic(const Duration(seconds: 2), (_) => _fetchEspStatus());
-    _bayesianTimer = Timer.periodic(const Duration(seconds: 2), (_) => _fetchBayesianStatus());
+    _espTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspStatus());
+    _bayesianTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchBayesianStatus());
     Timer.periodic(const Duration(seconds: 30), (_) => _fetchWeatherStatus());
-    Timer.periodic(const Duration(seconds: 2), (_) => _checkConnectivity());
+    Timer.periodic(const Duration(seconds: 10), (_) => _checkConnectivity());
   }
 
   @override
@@ -280,10 +280,6 @@ class DashboardViewModel extends ChangeNotifier {
       if (response.statusCode == 200) {
         plant.isWatering = true;
         _notify();
-        Future.delayed(const Duration(seconds: 20), () {
-          plant.isWatering = false;
-          _notify();
-        });
         await Fluttertoast.showToast(msg: 'OK: ${plant.displayName} watering started', fontSize: 16);
       } else {
         await Fluttertoast.showToast(msg: 'ESP error: ${response.statusCode}', fontSize: 16);
@@ -305,10 +301,6 @@ class DashboardViewModel extends ChangeNotifier {
       if (response.statusCode == 200) {
         plant.isWatering = true;
         _notify();
-        Future.delayed(const Duration(seconds: 20), () {
-          plant.isWatering = false;
-          _notify();
-        });
         await Fluttertoast.showToast(msg: 'OK: ${plant.displayName} watered via Bayesian', fontSize: 16);
         return true;
       } else {
@@ -331,6 +323,24 @@ class DashboardViewModel extends ChangeNotifier {
       _notify();
     } catch (e) {
       log('Stop watering error: $e');
+    }
+  }
+
+  Future<void> dispenseAmount(PlantData plant, int amountMl) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${settings.apiUrl}/command'),
+        body: Command(target: plant.target, action: Action.DISPENSE_SPECIFIC_AMOUNT, amount: amountMl).toJson(),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        plant.isWatering = true;
+        _notify();
+        await Fluttertoast.showToast(msg: 'Dispensing ${amountMl}ml for ${plant.displayName}', fontSize: 14);
+      } else {
+        await Fluttertoast.showToast(msg: 'ESP error: ${response.statusCode}', fontSize: 14);
+      }
+    } catch (e) {
+      await Fluttertoast.showToast(msg: 'ESP unreachable', fontSize: 14);
     }
   }
 

@@ -31,9 +31,9 @@
 
 #define ROTARY_DELTA_DEG 19.0f
 #define ROTARY_START_DEG  5.0f
-#define ROTARY_POSITION_COUNT 15
+#define ROTARY_POSITION_COUNT 10
 
-#define FLOW_RATE_ML_PER_MIN 6000
+#define FLOW_RATE_ML_PER_MIN 1380
 
 #define ADS1115_SDA 14
 #define ADS1115_SCL 4
@@ -43,7 +43,7 @@ constexpr char ssid[15] = "Brignuzzi WiFi";
 constexpr char password[25] = "88uffleukticegscwrizaqrt";
 constexpr char hostname[16] = "smart_sprinkler";
 
-const IPAddress local_IP(192, 168, 1, 9);
+const IPAddress local_IP(192, 168, 1, 10);
 const IPAddress gateway(192, 168, 1, 1);
 const IPAddress subnet(255, 255, 255, 0);
 
@@ -73,6 +73,10 @@ TwoWire adsWire(1);
 
 bool water_low_alert = false;
 int blocked_amount_ml = 0;
+
+bool dispensing_specific = false;
+int dispensing_target_ml = 0;
+unsigned long dispensing_start_ms = 0;
 
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
@@ -171,7 +175,26 @@ void loop() {
         command_manager.poll();
     }
 
+    if (dispensing_specific && water_pump.is_on()) {
+        const unsigned long elapsed_ms = millis() - dispensing_start_ms;
+        const unsigned long duration_ms = (static_cast<unsigned long>(dispensing_target_ml) * 60000UL) / FLOW_RATE_ML_PER_MIN;
+        if (elapsed_ms >= duration_ms) {
+            dispensing_specific = false;
+            dispensing_target_ml = 0;
+            water_pump.switch_off();
+            Serial.println("Auto-stop: target amount dispensed.");
+        }
+    }
+
     delay(100);
+}
+
+static void sendCorsJson(MongooseHttpServerRequest *req, int code, const char *content) {
+    auto *resp = req->beginResponse();
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->setContentType("application/json");
+    resp->setContent(content);
+    req->send(resp);
 }
 
 void setup_command_routes() {
@@ -179,7 +202,7 @@ void setup_command_routes() {
                 .http_method = HTTP_GET,
                 .from_json = nullptr,
                 .handler = [](MongooseHttpServerRequest *req, const std::shared_ptr<ICanBeDeserialized>& command) {
-                    req->send(200, "application/json", R"({"status":"ok"})");
+                    sendCorsJson(req, 200, R"({"status":"ok"})");
                 }
             });
     routes.put("/command", Route{
@@ -195,22 +218,17 @@ void setup_command_routes() {
 
                     String error_msg;
                     if (process_command(curr_command, error_msg)) {
-                        req->send(200, "application/json", R"({"status":"ok"})");
+                        sendCorsJson(req, 200, R"({"status":"ok"})");
                         return;
                     }
 
-                    req->send(
-                        400,
-                        "application/json",
-                        R"({"status":"error","error_code":"invalid_command","message":")" + error_msg + "\"}"
-                    );
+                    sendCorsJson(req, 400, (String(R"({"status":"error","error_code":"invalid_command","message":")") + error_msg + "\"}").c_str());
                 }
             });
     routes.put("/status", Route{
                 .http_method = HTTP_GET,
                 .from_json = nullptr,
                 .handler = [](MongooseHttpServerRequest *req, const std::shared_ptr<ICanBeDeserialized>& command) {
-
                     Hashtable<String, String> status;
                     status.put("status", "ok");
                     status.put("air_temperature", String(air_temperature, 2));
@@ -225,23 +243,17 @@ void setup_command_routes() {
                     status.put("water_low_alert", water_low_alert ? "on" : "off");
                     status.put("blocked_amount_ml", String(blocked_amount_ml));
                     status.put("active_plant", water_pump.is_on() ? target_to_string(active_target) : "null");
+                    status.put("camera_url", (WiFiAddr + ":81/stream").c_str());
 
-                    req->send(
-                        200,
-                        "application/json",
-                        hashtable_to_string(status)
-                        );
+                    String statusJson = hashtable_to_string(status);
+                    sendCorsJson(req, 200, statusJson.c_str());
                 }
             });
     command_manager.setup_routes(routes);
 }
 
 void reply_invalid_payload(MongooseHttpServerRequest *req) {
-    req->send(
-    400,
-    "application/json",
-    R"({"status":"error","error_code":"invalid_payload","message":"Invalid payload type"})"
-    );
+    sendCorsJson(req, 400, R"({"status":"error","error_code":"invalid_payload","message":"Invalid payload type"})");
 }
 
 int servo_degrees_to_us(float degrees) {
@@ -275,15 +287,6 @@ void move_servo_to_position(int position) {
 void calibrate_rotary() {
     Serial.println("Starting rotary calibration...");
     bool all_success = true;
-
-    // for (int i = ROTARY_START_DEG; i > -180+ROTARY_START_DEG; i-=2) {
-    //     Serial.print("Rotating to ");
-    //     Serial.print(i);
-    //     Serial.println("°");
-    //     const int target_us = servo_degrees_to_us(i);
-    //     rotary_servo.writeMicroseconds(target_us);
-    //     delay(1000);
-    // }
 
     for (int i = 0; i < ROTARY_POSITION_COUNT; i++) {
         const float angle = servo_position_to_degrees(i);
@@ -330,10 +333,10 @@ void calibrate_rotary() {
 void plant_to_servo(Target::Value target) {
     int position;
     switch (target) {
-        case Target::HABANERO:      position = 0; break;
-        case Target::NAGA_MORICH:   position = 1; break;
+        case Target::HABANERO:      position = 4; break;
+        case Target::NAGA_MORICH:   position = 3; break;
         case Target::CAROLINA_REAPER: position = 2; break;
-        case Target::ROSMARINO:     position = 3; break;
+        case Target::ROSMARINO:     position = 1; break;
         default: position = 0;
     }
     move_servo_to_position(position);
@@ -366,6 +369,8 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
     switch (command->get_action()) {
         case Action::STOP:
             Serial.println("Stopping dispensing.");
+            dispensing_specific = false;
+            dispensing_target_ml = 0;
             water_pump.switch_off();
             break;
         case Action::START:
@@ -392,15 +397,13 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
             active_target = command->get_target();
             plant_to_servo(active_target);
             delay(500);
+            dispensing_specific = true;
+            dispensing_target_ml = command->get_amount();
+            dispensing_start_ms = millis();
             water_pump.switch_on();
             Serial.print("Dispensing ");
             Serial.print(command->get_amount());
-            Serial.println(" ml.");
-            const unsigned long duration_ms = static_cast<unsigned long>(
-                (static_cast<float>(command->get_amount()) / FLOW_RATE_ML_PER_MIN) * 60.0f * 1000.0f
-            );
-            delay(duration_ms);
-            water_pump.switch_off();
+            Serial.println(" ml (non-blocking).");
             break;
         }
         default:

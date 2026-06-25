@@ -14,8 +14,8 @@ class SprinklerDataComponentViewModel {
   SprinklerDataComponentViewModel() {
     _fetchSprinklerData();
 
-    // Set up a periodic timer that calls _fetchData every 5 seconds.
-    _timer = Timer.periodic(const Duration(seconds: 2), (Timer t) {
+    // Set up a periodic timer that calls _fetchData every 10 seconds.
+    _timer = Timer.periodic(const Duration(seconds: 10), (Timer t) {
       _fetchSprinklerData();
     });
   }

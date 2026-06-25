@@ -9,18 +9,6 @@ class SystemControlView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => DashboardViewModel(),
-      child: const _SystemControlContent(),
-    );
-  }
-}
-
-class _SystemControlContent extends StatelessWidget {
-  const _SystemControlContent();
-
-  @override
-  Widget build(BuildContext context) {
     final vm = context.watch<DashboardViewModel>();
 
     return Scaffold(
