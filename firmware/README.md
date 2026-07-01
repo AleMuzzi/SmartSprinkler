@@ -1,11 +1,13 @@
 # SmartSprinkler — Firmware
 
-PlatformIO project for the ESP32-CAM board that controls the irrigation pump, routes water via a rotary selector (SG90 servo) to 4 plants, and exposes sensor readings via HTTP.
+PlatformIO project for the ESP32-CAM (main controller) and Arduino Nano (soil moisture sensor slave). The ESP32 controls irrigation, routes water via a rotary selector (SG90 servo), and exposes sensor readings via HTTP. The Arduino Nano reads 4 soil moisture sensors and streams them to the ESP32 over a software serial link.
 
 ## Hardware
 ![ESP32-CAM-Pinout.png](res/ESP32-CAM-Pinout.png)
 
 ### Pinout
+
+**ESP32-CAM (main controller)**
 
 | Component             | GPIO       | Notes                                              |
 |-----------------------|------------|----------------------------------------------------|
@@ -13,10 +15,18 @@ PlatformIO project for the ESP32-CAM board that controls the irrigation pump, ro
 | DHT22 (temp/humidity) | 2          |                                                    |
 | Water pump relay      | 12         | Active HIGH                                        |
 | SG90 rotary servo     | 13         | PWM signal (50Hz, 500–2500 µs pulse width)        |
-| ADS1115 SCL          | 4          | Software I2C (camera LED repurposed)                |
-| ADS1115 SDA          | 14         | Software I2C                                       |
+| Nano UART RX          | 14         | SoftwareSerial level-shifted 5V→3.3V              |
+| Nano UART TX          | 15         | Direct connection (3.3V → Nano RX is safe)        |
 
-> **GPIO 15 and 16 are free** — previously used for valve relays 2 and 3.
+**Arduino Nano (sensor slave)** — `firmware/src/arduino_nano/nano_sensor_reader.cpp`
+
+| Nano pin | Direction | Connection                                         |
+|----------|-----------|----------------------------------------------------|
+| A0–A3    | Input     | HW-390 OUT ×4 (Habanero, Naga, Carolina, Rosmarino)|
+| D3       | TX        | ESP32 GPIO 14 (via 1kΩ+2kΩ voltage divider)       |
+| D4       | RX        | ESP32 GPIO 15 (direct)                             |
+| VIN      | Power in  | ESP32 5V rail                                      |
+| GND      | Ground    | ESP32 GND (shared ground is mandatory)            |
 
 ### Wiring Diagram
 
@@ -26,28 +36,38 @@ graph TB
         GPIO2["🔌 GPIO 2<br>DHT22 DATA"]
         GPIO12["🔌 GPIO 12<br>Pump Relay IN"]
         GPIO13["🔌 GPIO 13<br>Servo PWM"]
-        GPIO4["🔌 GPIO 4<br>ADS1115 SCL"]
-        GPIO14["🔌 GPIO 14<br>ADS1115 SDA"]
+        GPIO14["🔌 GPIO 14<br>Nano UART RX<br><small>(via divider)</small>"]
+        GPIO15["🔌 GPIO 15<br>Nano UART TX"]
         5V["🔌 5V rail"]
         GND["🔌 GND"]
+    end
+
+    subgraph Nano["🔵 Arduino Nano (Sensor Slave)"]
+        A0["🔌 A0<br>HW-390 #1"]
+        A1["🔌 A1<br>HW-390 #2"]
+        A2["🔌 A2<br>HW-390 #3"]
+        A3["🔌 A3<br>HW-390 #4"]
+        D3["🔌 D3<br>UART TX → ESP GPIO14"]
+        D4["🔌 D4<br>UART RX ← ESP GPIO15"]
+        VIN_N["🔌 VIN<br>← ESP 5V"]
+        GND_N["🔌 GND"]
     end
 
     subgraph Required["✅ Required Components"]
         DHT22["🌡️ DHT22<br>Temp + Humidity<br><small>┬ VCC (1)<br>├ DATA (2)<br>├ NC (3)<br>└ GND (4)</small>"]
         PUMP_RELAY["⚡ Pump Relay Module<br>(Active HIGH)<br><small>┬ VCC (1)<br>├ IN (2) → GPIO12<br>├ GND (3)<br>└ NO/COM (pump)</small>"]
         SERVO["🔄 SG90 Servo<br>Rotary Selector<br><small>┬ VCC (1) → 5V<br>├ GND (2) → GND<br>└ PWM (3) → GPIO13</small>"]
-        ADS1115["📊 ADS1115<br>4-Ch 16-bit ADC<br><small>┬ VDD (1) → 3.3V<br>├ GND (2) → GND<br>├ SCL (3) → GPIO4<br>├ SDA (4) → GPIO14<br>├ AIN0 (5) → SM1<br>├ AIN1 (6) → SM2<br>├ AIN2 (7) → SM3<br>└ AIN3 (8) → SM4</small>"]
     end
 
     subgraph SoilSensors["🌱 Soil Moisture Sensors (×4)"]
-        SM1["💧 HW-390 #1<br>Habanero<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN0</small>"]
-        SM2["💧 HW-390 #2<br>Naga Morich<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN1</small>"]
-        SM3["💧 HW-390 #3<br>Carolina Reaper<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN2</small>"]
-        SM4["💧 HW-390 #4<br>Rosmarino<br><small>┬ VCC → 3.3V<br>├ GND → GND<br>└ OUT → ADS1115 AIN3</small>"]
+        SM1["💧 HW-390 #1<br>Habanero"]
+        SM2["💧 HW-390 #2<br>Naga Morich"]
+        SM3["💧 HW-390 #3<br>Carolina Reaper"]
+        SM4["💧 HW-390 #4<br>Rosmarino"]
     end
 
     subgraph Optional["⚪ Optional Components"]
-        AMS1117["🔌 AMS1117<br>5→3.3V Regulator<br><small>┬ VIN → 5V rail<br>├ GND → GND<br>└ VOUT → 3.3V</small>"]
+        DIVIDER["🔌 Voltage Divider<br>5V → 3.3V<br><small>1kΩ + 2kΩ</small>"]
         WATER_LEVEL["💧 Water Level<br>Float Switch<br><small>┬ VCC<br>├ GND<br>└ SIG → ESP GPIO? (TBD)</small>"]
         FLOW_METER["📏 YF-S401 Flow Meter<br><small>┬ VCC (red)<br>├ GND (black)<br>└ SIG (yellow) → ESP GPIO? (TBD)</small>"]
     end
@@ -55,29 +75,35 @@ graph TB
     GPIO2 ==> DHT22
     GPIO12 ==> PUMP_RELAY
     GPIO13 ==> SERVO
-    GPIO4 ==>|"SCL"| ADS1115
-    GPIO14 ==>|"SDA"| ADS1115
+    GPIO14 ==>|"RX via divider"| DIVIDER
+    DIVIDER ==>|"3.3V"| D3
+    GPIO15 ==>|"TX"| D4
     5V ==>|"5V"| PUMP_RELAY
     5V ==>|"5V"| SERVO
     5V ==>|"5V"| DHT22
+    5V ==>|"5V"| VIN_N
     GND ==>|"GND"| DHT22
     GND ==>|"GND"| PUMP_RELAY
     GND ==>|"GND"| SERVO
-    GND ==>|"GND"| ADS1115
-    ADS1115 ==>|"AIN0"| SM1
-    ADS1115 ==>|"AIN1"| SM2
-    ADS1115 ==>|"AIN2"| SM3
-    ADS1115 ==>|"AIN3"| SM4
+    GND ==>|"GND"| GND_N
+    5V ==>|"5V"| SM1
+    5V ==>|"5V"| SM2
+    5V ==>|"5V"| SM3
+    5V ==>|"5V"| SM4
+    GND ==>|"GND"| SM1
+    GND ==>|"GND"| SM2
+    GND ==>|"GND"| SM3
+    GND ==>|"GND"| SM4
+    SM1 ==>|"OUT"| A0
+    SM2 ==>|"OUT"| A1
+    SM3 ==>|"OUT"| A2
+    SM4 ==>|"OUT"| A3
 
-    AMS1117 -.->|"optional<br>3.3V power"| ADS1115
-    AMS1117 -.->|"optional<br>3.3V power"| SM1
-    AMS1117 -.->|"optional<br>3.3V power"| SM2
-    AMS1117 -.->|"optional<br>3.3V power"| SM3
-    AMS1117 -.->|"optional<br>3.3V power"| SM4
     WATER_LEVEL -.->|"signal"| ESP32
     FLOW_METER -.->|"signal"| ESP32
 
     classDef esp32 fill:#FFF9C4,stroke:#F9A825
+    classDef nano fill:#E3F2FD,stroke:#1565C0
     classDef required fill:#E8F5E9,stroke:#2E7D32
     classDef sensor fill:#E3F2FD,stroke:#1565C0
     classDef optional fill:#F5F5F5,stroke:#9E9E9E,stroke-dasharray:5 5
@@ -85,10 +111,11 @@ graph TB
     classDef pwr fill:#FFEBEE,stroke:#C62828
     classDef gnd fill:#ECEFF1,stroke:#607D8B
 
-    class GPIO2,GPIO12,GPIO13,GPIO4,GPIO14,5V,GND esp32
-    class DHT22,PUMP_RELAY,SERVO,ADS1115 required
+    class GPIO2,GPIO12,GPIO13,GPIO14,GPIO15,5V,GND esp32
+    class A0,A1,A2,A3,D3,D4,VIN_N,GND_N nano
+    class DHT22,PUMP_RELAY,SERVO required
     class SM1,SM2,SM3,SM4 sensor
-    class AMS1117,WATER_LEVEL,FLOW_METER optional
+    class DIVIDER,WATER_LEVEL,FLOW_METER optional
 ```
 
 **Legend:**
@@ -115,33 +142,53 @@ The step angle (`ROTARY_DELTA_DEG = 18.0°`, start `ROTARY_START_DEG = 52.0°`) 
 
 On boot, the firmware runs a calibration sweep: it visits each position sequentially, waits 800 ms, reads back the actual pulse width, and verifies the servo reached the target within ±100 µs tolerance. If any position fails, `rotary_position` in `/status` reports `"uncalibrated"` and the system falls back to software-only position tracking. Adjust `ROTARY_DELTA_DEG` if the servo doesn't reach all positions accurately.
 
-## ADS1115 — 4-Channel 16-bit Soil Moisture ADC
+## Arduino Nano — Soil Moisture Sensor Slave
 
-The ESP32-CAM has no free GPIOs for extra ADCs and its ADC2 conflicts with WiFi.
-An external ADS1115 (I2C, 4-channel, 16-bit) provides clean isolated readings via software I2C on GPIO 14 (SDA) and GPIO 4 (SCL, camera LED repurposed).
+The ESP32-CAM has no free ADC1 pins (all exposed GPIOs are ADC2, which conflicts with WiFi), so an **Arduino Nano** reads the 4 soil moisture sensors and streams them over a 9600 baud software serial link.
+
+#### Serial Protocol
+
+The Nano sends one line every 500 ms:
+
+```
+S:412,380,501,290\n
+```
+
+Prefix `S:` identifies the message type. The 4 comma-separated integers are the raw ADC readings (0–1023) for sensors #1–#4.
 
 #### Wiring
 
-| ADS1115 | ESP32-CAM     | Sensor             |
-|---------|---------------|--------------------|
-| VDD     | 3.3V         |                    |
-| GND     | GND           |                    |
-| SCL     | GPIO 4        | Camera LED flash repurposed as I2C clock |
-| SDA     | GPIO 14       |                    |
-| AIN0    |               | HW-390 #1 (Habanero)       |
-| AIN1    |               | HW-390 #2 (Naga Morich)    |
-| AIN2    |               | HW-390 #3 (Carolina Reaper) |
-| AIN3    |               | HW-390 #4 (Rosmarino)      |
-
-GPIO 14 is used as digital I2C data (not analog), so the ADC2 WiFi conflict does not apply.
-GPIO 4 (camera LED flash) is sacrificed because no free GPIOs remain on the ESP32-CAM.
-
-#### Optional: AMS1117 for clean 3.3V power
-
-For the lowest noise on ADC readings, power the ADS1115 and HW-390 sensors from an external AMS1117 5→3.3V regulator:
-
+**Power** (single USB-C to ESP32-CAM, then distributed):
 ```
-5V rail → AMS1117 VIN → 3.3V → ADS1115 VDD + HW-390 VCC
+ESP32 5V pin → Nano VIN, HW-390 #1 VCC, #2 VCC, #3 VCC, #4 VCC
+ESP32 GND    → Nano GND, HW-390 #1 GND, #2 GND, #3 GND, #4 GND
+```
+
+**Serial** (Nano D3/D4 ↔ ESP32 GPIO 14/15):
+```
+Nano D3 (TX, 5V) ──[1kΩ]──┬── ESP32 GPIO 14 (RX, 3.3V)
+                            [2kΩ]
+                             │
+                            GND
+
+ESP32 GPIO 15 (TX, 3.3V) ──── Nano D4 (RX)    [direct, 3.3V safe for 5V Nano]
+```
+
+The voltage divider drops the Nano's 5V TX down to 3.3V to protect the ESP32 RX pin. The reverse direction (ESP32 TX → Nano RX) is safe without level shifting because the Nano reads 3.3V as HIGH.
+
+**Sensors** (HW-390 analog output → Nano ADC):
+```
+HW-390 #1 OUT → Nano A0   (Habanero)
+HW-390 #2 OUT → Nano A1   (Naga Morich)
+HW-390 #3 OUT → Nano A2   (Carolina Reaper)
+HW-390 #4 OUT → Nano A3   (Rosmarino)
+```
+
+**Important:** shared GND between ESP32 and Nano is **mandatory** — without it, the serial voltage levels have no reference and communication will fail.
+
+#### Calibration
+
+After the first boot, read the raw ADC values from the ESP32 serial monitor (look for `Soil moisture ADC: …`) and adjust `SOIL_DRY_ADC` in `src/esp32/main.cpp` to match the value reported by a fully dry sensor.
 ```
 
 ## API endpoints (Mongoose, port 80)
@@ -220,15 +267,23 @@ The default `FLOW_RATE_ML_PER_MIN` is 6000 (6 L/min). To calibrate:
 
 ## Build & deploy
 
+**ESP32-CAM (main controller):**
 ```bash
 pio run --target upload -e esp32
-pio device monitor  # serial console at 115200 baud
+pio device monitor -e esp32  # serial console at 115200 baud
+```
+
+**Arduino Nano (sensor slave):**
+```bash
+pio run --target upload -e nano
+pio device monitor -e nano  # serial console at 9600 baud (debug only — D3/D4 used for ESP)
 ```
 
 ## Unused / Spare Components
 
-- **74HC4051 (×3)** — 8-channel analog muxes. Not needed; the ADS1115 provides 4 dedicated ADC channels.
-- **AMS1117 (×4 remaining)** — 5→3.3V regulators. One can be used for clean analog power (see above); the rest are spares.
-- **GPIO 15, 16** — free, previously used for valve relays 2 and 3.
+- **74HC4051 (×3)** — 8-channel analog muxes. Not needed; the Arduino Nano provides 4 dedicated ADC channels.
+- **AMS1117 (×4 remaining)** — 5→3.3V regulators. Now unused since the Nano reads sensors directly from its 5V rail.
+- **GPIO 4** — freed up (was ADS1115 SCL). Available for future use.
+- **GPIO 16** — free, previously used for valve relays 2 and 3.
 
 WiFi credentials are hardcoded in `src/esp32/main.cpp`.

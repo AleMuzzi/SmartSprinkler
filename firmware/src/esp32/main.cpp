@@ -18,9 +18,8 @@
 #include "services/CommandManager.h"
 #include "utils/hashtable_ext.h"
 
-#include <Wire.h>
-#include <Adafruit_ADS1X15.h>
 #include <ESP32Servo.h>
+#include <HardwareSerial.h>
 
 #define PIN_PUMP_RELAY 12
 #define PIN_ROTARY_SERVO 13
@@ -35,9 +34,9 @@
 
 #define FLOW_RATE_ML_PER_MIN 1380
 
-#define ADS1115_SDA 14
-#define ADS1115_SCL 4
-#define SOIL_DRY_ADC 26400
+#define NANO_RX_PIN 14
+#define NANO_TX_PIN 15
+#define SOIL_DRY_ADC 1000
 
 constexpr char ssid[15] = "Brignuzzi WiFi";
 constexpr char password[25] = "88uffleukticegscwrizaqrt";
@@ -67,9 +66,9 @@ int rotary_current_position = 0;
 bool rotary_calibrated = false;
 
 int soil_moisture_raw[4] = {0, 0, 0, 0};
-bool ads_available = false;
-Adafruit_ADS1115 ads;
-TwoWire adsWire(1);
+bool nano_connected = false;
+
+HardwareSerial NanoSerial(2);
 
 bool water_low_alert = false;
 int blocked_amount_ml = 0;
@@ -83,7 +82,7 @@ void reply_invalid_payload(MongooseHttpServerRequest *req);
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg);
 void plant_to_servo(Target::Value target);
 const char* target_to_string(Target::Value target);
-void read_soil_moistures();
+void read_nano_soil_moistures();
 int servo_degrees_to_us(float degrees);
 void calibrate_rotary();
 void move_servo_to_position(int position);
@@ -119,14 +118,8 @@ void setup() {
 
     water_pump.switch_off();
 
-    adsWire.begin(ADS1115_SDA, ADS1115_SCL);
-    if (ads.begin(ADS1X15_ADDRESS, &adsWire)) {
-        ads.setGain(GAIN_ONE);
-        ads_available = true;
-        Serial.println("ADS1115 initialized (SDA=14, SCL=4)");
-    } else {
-        Serial.println("ADS1115 not found — check wiring");
-    }
+    NanoSerial.begin(9600, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
+    Serial.println("Nano UART2 initialized (RX=14, TX=15)");
 
     TempHumiditySensor::init();
 
@@ -160,14 +153,12 @@ void loop() {
             Serial.println(air_humidity);
         }
 
-        read_soil_moistures();
-        if (ads_available) {
-            Serial.print("Soil moisture ADC: ");
-            Serial.print(soil_moisture_raw[0]); Serial.print(", ");
-            Serial.print(soil_moisture_raw[1]); Serial.print(", ");
-            Serial.print(soil_moisture_raw[2]); Serial.print(", ");
-            Serial.println(soil_moisture_raw[3]);
-        }
+        read_nano_soil_moistures();
+        Serial.print("Soil moisture ADC: ");
+        Serial.print(soil_moisture_raw[0]); Serial.print(", ");
+        Serial.print(soil_moisture_raw[1]); Serial.print(", ");
+        Serial.print(soil_moisture_raw[2]); Serial.print(", ");
+        Serial.println(soil_moisture_raw[3]);
         Serial.println("-------------------------------");
     }
 
@@ -352,14 +343,48 @@ const char* target_to_string(const Target::Value target) {
     return "UNKNOWN";
 }
 
-void read_soil_moistures() {
-    if (!ads_available) return;
+#define NANO_LINE_MAX 32
+static char nano_line[NANO_LINE_MAX];
+static int nano_line_idx = 0;
 
-    soil_moisture_raw[0] = ads.readADC_SingleEnded(0);
-    soil_moisture_raw[1] = ads.readADC_SingleEnded(1);
-    soil_moisture_raw[2] = ads.readADC_SingleEnded(2);
-    soil_moisture_raw[3] = ads.readADC_SingleEnded(3);
+static void parse_nano_line(const char* line) {
+    if (line[0] != 'S' || line[1] != ':') return;
+    int idx = 2;
+    for (int ch = 0; ch < 4; ch++) {
+        int value = 0;
+        bool has_digit = false;
+        while (line[idx] >= '0' && line[idx] <= '9') {
+            value = value * 10 + (line[idx] - '0');
+            idx++;
+            has_digit = true;
+        }
+        if (!has_digit) return;
+        soil_moisture_raw[ch] = value;
+        if (line[idx] == ',') {
+            idx++;
+        } else if (line[idx] == '\0') {
+            return;
+        } else {
+            return;
+        }
+    }
+}
 
+void read_nano_soil_moistures() {
+    while (NanoSerial.available()) {
+        const char c = NanoSerial.read();
+        if (c == '\n') {
+            nano_line[nano_line_idx] = '\0';
+            parse_nano_line(nano_line);
+            nano_line_idx = 0;
+        } else if (c != '\r' && nano_line_idx < NANO_LINE_MAX - 1) {
+            nano_line[nano_line_idx++] = c;
+        }
+    }
+    if (!nano_connected && nano_line_idx > 0) {
+        nano_connected = true;
+        Serial.println("Nano sensor data received");
+    }
     const int avg_raw = (soil_moisture_raw[0] + soil_moisture_raw[1] +
                          soil_moisture_raw[2] + soil_moisture_raw[3]) / 4;
     soil_moisture = constrain(map(avg_raw, SOIL_DRY_ADC, 0, 0, 100), 0, 100);
