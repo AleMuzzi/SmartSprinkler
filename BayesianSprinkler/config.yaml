@@ -3,7 +3,7 @@ server:
   port: 8080
 esp:
   base_url: http://192.168.1.10
-  poll_interval: 120
+  poll_interval: 1800
 weather:
   latitude: 44.695946
   longitude: 10.443454
@@ -22,24 +22,28 @@ plants:
   habanero:
     display_name: Habanero
     esp_target: HABANERO
+    sensor_index: 0
     base_need: 0.52
     threshold: 0.5
     watering_duration: 6
   naga_morich:
     display_name: Naga Morich
     esp_target: NAGA_MORICH
+    sensor_index: 1
     base_need: 0.544
     threshold: 0.5
     watering_duration: 6
   carolina_reaper:
     display_name: Carolina Reaper
     esp_target: CAROLINA_REAPER
+    sensor_index: 2
     base_need: 0.56
     threshold: 0.48
     watering_duration: 6
   rosmarino:
     display_name: Rosmarino
     esp_target: ROSMARINO
+    sensor_index: 3
     base_need: 0.2
     threshold: 0.8
     watering_duration: 2

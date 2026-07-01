@@ -26,6 +26,18 @@ function ProbabilityBar({ value, threshold = 0.5 }) {
   )
 }
 
+function SoilMoistureBadge({ rawValue }) {
+  if (rawValue === null || rawValue === undefined) return null
+  const SOIL_DRY_ADC = 1000
+  const pct = Math.max(0, Math.min(100, Math.round((1 - rawValue / SOIL_DRY_ADC) * 100)))
+  const color = pct <= 20 ? 'text-red-500' : pct <= 50 ? 'text-yellow-500' : 'text-green-500'
+  return (
+    <span className={`text-xs font-semibold ${color}`}>
+      Soil: {pct}%
+    </span>
+  )
+}
+
 export function BayesianInsights({ plantStatuses }) {
   if (!plantStatuses || plantStatuses.length === 0) {
     return (
@@ -49,9 +61,12 @@ export function BayesianInsights({ plantStatuses }) {
             <div key={status.plant_id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
               <div className="flex justify-between items-center mb-2">
                 <span className="font-semibold text-gray-700">{label}</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${needs ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                  {needs ? 'Needs water' : 'OK'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <SoilMoistureBadge rawValue={status.soil_moisture} />
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${needs ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                    {needs ? 'Needs water' : 'OK'}
+                  </span>
+                </div>
               </div>
               <ProbabilityBar value={prob} />
             </div>

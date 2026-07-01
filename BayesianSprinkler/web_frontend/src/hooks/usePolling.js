@@ -1,34 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchEspStatus, fetchBayesianPlantStatus, fetchBayesianWeatherStatus, fetchEspHealth, fetchBayesianHealth } from '../services/api.js'
+import { useState, useEffect, useCallback } from 'react'
+import { fetchEspHealth, fetchDashboard } from '../services/api.js'
 import { loadPollingInterval } from '../services/settings.js'
 
-export function useEspStatus() {
-  const [data, setData] = useState(null)
-  const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(true)
-
-  const fetch = useCallback(async () => {
-    try {
-      const result = await fetchEspStatus()
-      setData(result)
-      setError(null)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetch()
-    const interval = setInterval(fetch, loadPollingInterval())
-    return () => clearInterval(interval)
-  }, [fetch])
-
-  return { data, error, loading, refetch: fetch }
-}
-
-export function useBayesianStatus() {
+export function useDashboard() {
+  const [espData, setEspData] = useState(null)
+  const [espHealthy, setEspHealthy] = useState(false)
   const [plantStatuses, setPlantStatuses] = useState([])
   const [weather, setWeather] = useState(null)
   const [error, setError] = useState(null)
@@ -36,13 +12,21 @@ export function useBayesianStatus() {
 
   const fetch = useCallback(async () => {
     try {
-      const [plantsRes, weatherRes] = await Promise.all([
-        fetchBayesianPlantStatus(),
-        fetchBayesianWeatherStatus().catch(() => null),
+      const [espRes, dashboardRes] = await Promise.allSettled([
+        fetchEspHealth(),
+        fetchDashboard(),
       ])
-      setPlantStatuses(plantsRes.plants || [])
-      setWeather(weatherRes)
-      setError(null)
+
+      setEspHealthy(espRes.status === 'fulfilled')
+
+      if (dashboardRes.status === 'fulfilled') {
+        setEspData(dashboardRes.value.esp)
+        setPlantStatuses(dashboardRes.value.plants || [])
+        setWeather(dashboardRes.value.weather)
+        setError(null)
+      } else {
+        setError(dashboardRes.reason?.message || 'Dashboard unavailable')
+      }
     } catch (e) {
       setError(e.message)
     } finally {
@@ -56,30 +40,5 @@ export function useBayesianStatus() {
     return () => clearInterval(interval)
   }, [fetch])
 
-  return { plantStatuses, weather, error, loading, refetch: fetch }
-}
-
-export function useHealthChecks() {
-  const [espHealthy, setEspHealthy] = useState(false)
-  const [bayesianHealthy, setBayesianHealthy] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  const check = useCallback(async () => {
-    setLoading(true)
-    const [esp, bayesian] = await Promise.allSettled([
-      fetchEspHealth().then(() => true),
-      fetchBayesianHealth().then(() => true),
-    ])
-    setEspHealthy(esp.status === 'fulfilled')
-    setBayesianHealthy(bayesian.status === 'fulfilled')
-    setLoading(false)
-  }, [])
-
-  useEffect(() => {
-    check()
-    const interval = setInterval(check, loadPollingInterval())
-    return () => clearInterval(interval)
-  }, [check])
-
-  return { espHealthy, bayesianHealthy, loading, refetch: check }
+  return { espData, espHealthy, plantStatuses, weather, error, loading, refetch: fetch }
 }

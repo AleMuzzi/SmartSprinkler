@@ -68,6 +68,13 @@ export async function fetchBayesianWeatherStatus() {
   return res.json()
 }
 
+export async function fetchDashboard() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/dashboard`)
+  if (!res.ok) throw new Error(`Dashboard failed: ${res.status}`)
+  return res.json()
+}
+
 export async function sendBayesianManualWater(plantType) {
   const { bayesianUrl } = getSettings()
   const res = await fetchWithTimeout(`${bayesianUrl}/api/plants/manual-water`, {

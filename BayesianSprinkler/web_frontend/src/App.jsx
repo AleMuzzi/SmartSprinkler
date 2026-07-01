@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { useEspStatus, useBayesianStatus, useHealthChecks } from './hooks/usePolling.js'
+import { useDashboard } from './hooks/usePolling.js'
 import { TelemetryPanel, WeatherPanel } from './components/TelemetryPanel.jsx'
 import { BayesianInsights } from './components/BayesianInsights.jsx'
 import { ControlPanel } from './components/ControlPanel.jsx'
@@ -19,9 +19,7 @@ function Toast({ message, type }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [toast, setToast] = useState(null)
-  const { data: espData, error: espError, loading: espLoading } = useEspStatus()
-  const { plantStatuses, weather, error: bayError, loading: bayLoading } = useBayesianStatus()
-  const { espHealthy, bayesianHealthy } = useHealthChecks()
+  const { espData, espHealthy, plantStatuses, weather, error, loading } = useDashboard()
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ message: msg, type })
@@ -37,7 +35,7 @@ export default function App() {
             <span className="text-2xl">🌿</span>
             <h1 className="text-xl font-bold text-gray-800">SmartSprinkler</h1>
           </div>
-          <HealthBar espOnline={espHealthy} bayesianOnline={bayesianHealthy} />
+          <HealthBar espOnline={espHealthy} bayesianOnline={!error} />
         </div>
         {/* Nav tabs */}
         <div className="max-w-6xl mx-auto px-4 flex gap-1">
@@ -62,11 +60,11 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <>
             {/* Telemetry */}
-            {espLoading ? (
+            {loading ? (
               <div className="flex justify-center py-12">
                 <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full spinner" />
               </div>
-            ) : espError ? (
+            ) : error ? (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-center">
                 ⚠️ ESP32 unreachable — check wiring and IP address
               </div>
@@ -78,7 +76,7 @@ export default function App() {
             <WeatherPanel weather={weather} />
 
             {/* Bayesian insights */}
-            {bayError ? null : (
+            {error ? null : (
               <BayesianInsights plantStatuses={plantStatuses} />
             )}
           </>

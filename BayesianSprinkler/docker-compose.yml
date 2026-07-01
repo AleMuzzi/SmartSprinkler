@@ -4,7 +4,7 @@ services:
     container_name: bayesian-server
     restart: unless-stopped
     ports:
-      - "38080:8080"
+      - "8080:8080"
     volumes:
       - ./data:/app/data
       - ./scripts:/app/scripts:ro

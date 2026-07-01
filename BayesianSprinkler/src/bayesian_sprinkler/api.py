@@ -57,6 +57,7 @@ class EvidenceNode(BaseModel):
 class PlantStatus(BaseModel):
     plant_id: str
     probability_of_need: float
+    soil_moisture: float | None
     evidence_nodes: list[EvidenceNode]
 
 
@@ -69,6 +70,14 @@ class WeatherResponse(BaseModel):
 
 class PlantStatusResponse(BaseModel):
     plants: list[PlantStatus]
+
+
+class DashboardResponse(BaseModel):
+    esp: dict
+    esp_healthy: bool
+    plants: list[PlantStatus]
+    weather: WeatherResponse
+    pump_on: bool
 
 
 # ── Lifespan ────────────────────────────────────────────────────────
@@ -286,6 +295,72 @@ def _register_routes(app: FastAPI):
             rain_forecast=state._cached_weather["rain_forecast"],
         )
 
+    @app.get(
+        "/api/dashboard",
+        response_model=DashboardResponse,
+        tags=["Dashboard"],
+        summary="Combined ESP + plants + weather in one request",
+        responses={200: {"description": "Combined dashboard data"}},
+    )
+    def get_dashboard():
+        esp_status = {}
+        pump_on = False
+        esp_healthy = False
+        try:
+            esp_status = state.esp.get_status()
+            pump_on = esp_status.get("water_pump") == "on"
+            esp_healthy = True
+        except Exception:
+            pass
+
+        raw_soil_avg = float(esp_status.get("soil_moisture", 0))
+        raw_temp = float(esp_status.get("air_temperature", 25))
+        raw_humid = float(esp_status.get("air_humidity", 50))
+
+        temp = state.esp.discretize_temperature(raw_temp)
+        humid = state.esp.discretize_humidity(raw_humid)
+
+        plants = []
+        for plant_name in state.config["plants"]:
+            sensor_idx = state.config["plants"][plant_name].get("sensor_index", 0)
+            raw_sm = esp_status.get(f"soil_moisture_{sensor_idx}")
+            plant_sm = float(raw_sm) if raw_sm is not None else None
+            soil = state.esp.discretize_soil_moisture(plant_sm if plant_sm is not None else raw_soil_avg)
+
+            with state.lock:
+                prob = state.bn.query(
+                    plant=plant_name,
+                    temperature=temp,
+                    humidity=humid,
+                    cloud_cover=state._cached_weather["cloud_cover"],
+                    soil_moisture=soil,
+                    rain_forecast=state._cached_weather["rain_forecast"],
+                )
+            evidence_nodes = _build_evidence_nodes(
+                soil, temp, humid,
+                state._cached_weather["cloud_cover"],
+                state._cached_weather["rain_forecast"],
+            )
+            plants.append(PlantStatus(
+                plant_id=plant_name,
+                probability_of_need=round(prob, 2),
+                soil_moisture=plant_sm,
+                evidence_nodes=evidence_nodes,
+            ))
+
+        return DashboardResponse(
+            esp=esp_status,
+            esp_healthy=esp_healthy,
+            plants=plants,
+            weather=WeatherResponse(
+                temperature=state._cached_weather.get("temperature"),
+                humidity=raw_humid,
+                cloud_cover=state._cached_weather["cloud_cover"],
+                rain_forecast=state._cached_weather["rain_forecast"],
+            ),
+            pump_on=pump_on,
+        )
+
 
 # ── Background jobs ─────────────────────────────────────────────────
 
@@ -387,19 +462,23 @@ def _inference_cycle(st: AppState):
         wx = st.weather.fetch()
         pump_on = status["water_pump"] == "on"
 
-        logger.info(
-            "Inference cycle — soil: %s%%, temp: %s°C, humidity: %s%%  |  "
-            "sky: %s, rain: %s  |  pump: %s",
-            status["soil_moisture"], status["air_temperature"],
-            status["air_humidity"], wx["cloud_cover"],
-            wx["rain_forecast"], status["water_pump"],
-        )
-
-        soil = st.esp.discretize_soil_moisture(float(status["soil_moisture"]))
         temp = st.esp.discretize_temperature(float(status["air_temperature"]))
         humid = st.esp.discretize_humidity(float(status["air_humidity"]))
 
         for plant_name, cfg in st.config["plants"].items():
+            sensor_idx = cfg.get("sensor_index", 0)
+            raw_sm = status.get(f"soil_moisture_{sensor_idx}")
+            plant_sm = float(raw_sm) if raw_sm is not None else float(status["soil_moisture"])
+            soil = st.esp.discretize_soil_moisture(plant_sm)
+
+            logger.info(
+                "Inference cycle — %s: soil=%s (raw=%s), temp: %s°C, humidity: %s%%  |  "
+                "sky: %s, rain: %s  |  pump: %s",
+                cfg["display_name"], soil, plant_sm, status["air_temperature"],
+                status["air_humidity"], wx["cloud_cover"],
+                wx["rain_forecast"], status["water_pump"],
+            )
+
             with st.lock:
                 prob = st.bn.query(
                     plant=plant_name,

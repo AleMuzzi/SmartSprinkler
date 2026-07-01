@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from json import JSONDecodeError
 
 import requests
 
@@ -16,7 +16,12 @@ class ESP32Client:
     def get_status(self) -> dict:
         resp = requests.get(f"{self.base_url}/status", timeout=10)
         resp.raise_for_status()
-        return resp.json()
+        try:
+            resp_json = resp.json()
+        except JSONDecodeError:
+            logger.error("ESP32 returned invalid JSON: %s", resp.text)
+            raise
+        return resp_json
 
     def discretize_soil_moisture(self, value: float) -> str:
         if value <= self.thresholds["soil_moisture"]["dry"]:
