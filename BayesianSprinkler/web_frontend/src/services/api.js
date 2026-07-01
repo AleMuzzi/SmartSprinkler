@@ -15,7 +15,7 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-function getSettings() {
+export function getSettings() {
   return loadSettings()
 }
 

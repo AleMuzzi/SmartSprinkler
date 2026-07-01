@@ -1,5 +1,5 @@
 const DEFAULT_SETTINGS = {
-  espUrl: 'http://192.168.1.50:80',
+  espUrl: 'http://192.168.1.50',
   bayesianUrl: 'http://localhost:38080',
   pollingInterval: 2000,
 }

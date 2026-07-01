@@ -4,6 +4,7 @@ import { TelemetryPanel, WeatherPanel } from './components/TelemetryPanel.jsx'
 import { BayesianInsights } from './components/BayesianInsights.jsx'
 import { ControlPanel } from './components/ControlPanel.jsx'
 import { SettingsPanel } from './components/SettingsPanel.jsx'
+import { CameraPanel } from './components/CameraPanel.jsx'
 import { HealthBar } from './components/StatusBadge.jsx'
 
 function Toast({ message, type }) {
@@ -40,7 +41,7 @@ export default function App() {
         </div>
         {/* Nav tabs */}
         <div className="max-w-6xl mx-auto px-4 flex gap-1">
-          {['dashboard', 'control', 'settings'].map((tab) => (
+          {['dashboard', 'control', 'camera', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -50,7 +51,7 @@ export default function App() {
                   : 'text-gray-500 hover:bg-gray-100'
               }`}
             >
-              {tab === 'dashboard' ? 'Dashboard' : tab === 'control' ? 'Control' : 'Settings'}
+              {tab === 'dashboard' ? 'Dashboard' : tab === 'control' ? 'Control' : tab === 'camera' ? 'Camera' : 'Settings'}
             </button>
           ))}
         </div>
@@ -85,6 +86,10 @@ export default function App() {
 
         {activeTab === 'control' && (
           <ControlPanel onMessage={showToast} />
+        )}
+
+        {activeTab === 'camera' && (
+          <CameraPanel />
         )}
 
         {activeTab === 'settings' && (

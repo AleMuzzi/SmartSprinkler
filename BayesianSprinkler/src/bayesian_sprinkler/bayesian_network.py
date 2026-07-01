@@ -138,7 +138,6 @@ class SmartSprinklerBN:
         cfg = self.plant_configs[plant]
         evap_score = {"low": 0.0, "med": 0.5, "high": 1.0}[evap]
         sm_score = {"dry": 1.0, "moist": 0.3, "wet": 0.0}[sm]
-        is_chili = plant in CHILI_PLANTS
 
         score = (
             cfg["base_need"] * 0.35
@@ -147,10 +146,7 @@ class SmartSprinklerBN:
         )
 
         if rf == "yes":
-            if sm == "dry" and is_chili:
-                score *= 0.4
-            else:
-                score *= 0.05
+            score *= 0.85
 
         prob = score
         return float(np.clip(prob, 0.01, 0.99))

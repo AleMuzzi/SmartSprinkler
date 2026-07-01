@@ -178,8 +178,8 @@ class TestSmartSprinklerBN:
             soil_moisture="dry",
             rain_forecast="yes",
         )
-        # With rain forecast, chili with dry soil should have ~40% reduction
-        assert prob_reaper_dry_rain < prob_reaper_dry_no_rain * 0.6
+        # With rain forecast, chili with dry soil should have ~15% reduction (balcony is covered)
+        assert prob_reaper_dry_rain <= prob_reaper_dry_no_rain * 0.85
 
     def test_evaporation_high_with_hot_dry_clear(self, bn):
         """EvaporationRisk should be highest when hot, dry, and clear."""
