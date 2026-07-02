@@ -10,6 +10,8 @@ data/*.db-wal
 data/*.db-shm
 data/*.pkl
 !data/.gitkeep
+config.yaml
+.env
 
 # Web frontend
 web_frontend/node_modules/

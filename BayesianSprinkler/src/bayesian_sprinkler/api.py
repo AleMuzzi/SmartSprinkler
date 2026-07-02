@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
 from bayesian_sprinkler.database import init_db, insert_record
+from bayesian_sprinkler.notifier import send_email_alert
 from bayesian_sprinkler.sensor_client import ESP32Client, WeatherClient
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class AppState:
             "rain_forecast": "no",
             "temperature": None,
         }
+        self._water_low_alert: bool = False
 
 
 state = AppState()
@@ -75,6 +77,7 @@ class PlantStatusResponse(BaseModel):
 class DashboardResponse(BaseModel):
     esp: dict
     esp_healthy: bool
+    water_low_alert: bool
     plants: list[PlantStatus]
     weather: WeatherResponse
     pump_on: bool
@@ -291,9 +294,9 @@ def _register_routes(app: FastAPI):
         except Exception:
             pass
 
-        if raw_temp is None:
-            raw_temp = state._cached_weather.get("temperature")
-        if raw_humid is None:
+        if raw_temp is None or raw_temp < 0:
+            raw_temp = state._cached_weather.get("temperature") or 25.0
+        if raw_humid is None or raw_humid < 0:
             raw_humid = 50.0
 
         return WeatherResponse(
@@ -324,6 +327,11 @@ def _register_routes(app: FastAPI):
         raw_soil_avg = float(esp_status.get("soil_moisture", 0))
         raw_temp = float(esp_status.get("air_temperature", 25))
         raw_humid = float(esp_status.get("air_humidity", 50))
+
+        if raw_temp < 0:
+            raw_temp = state._cached_weather.get("temperature") or 25.0
+        if raw_humid < 0:
+            raw_humid = 50.0
 
         temp = state.esp.discretize_temperature(raw_temp)
         humid = state.esp.discretize_humidity(raw_humid)
@@ -359,6 +367,7 @@ def _register_routes(app: FastAPI):
         return DashboardResponse(
             esp=esp_status,
             esp_healthy=esp_healthy,
+            water_low_alert=esp_status.get("water_low_alert") == "on",
             plants=plants,
             weather=WeatherResponse(
                 temperature=state._cached_weather.get("temperature"),
@@ -380,13 +389,18 @@ def _hourly_poll(st: AppState):
         raw_temp = float(status["air_temperature"])
     except Exception:
         logger.warning("ESP offline — falling back to weather API for temperature")
+        raw_temp = None
+
+    if raw_temp is not None and raw_temp < 0:
+        logger.warning("DHT invalid — falling back to weather API for temperature")
+        raw_temp = None
+
+    if raw_temp is None:
         try:
             wx = st.weather.fetch()
             raw_temp = wx.get("temperature")
         except Exception:
             raw_temp = None
-
-    if raw_temp is None:
         logger.warning(
             "No temperature source available — "
             "using safe default interval of %d minutes",
@@ -470,8 +484,24 @@ def _inference_cycle(st: AppState):
         wx = st.weather.fetch()
         pump_on = status["water_pump"] == "on"
 
-        temp = st.esp.discretize_temperature(float(status["air_temperature"]))
-        humid = st.esp.discretize_humidity(float(status["air_humidity"]))
+        water_low = status.get("water_low_alert") == "on"
+        if water_low and not st._water_low_alert:
+            logger.warning("WATER LOW ALERT DETECTED!")
+            send_email_alert(
+                st.config,
+                subject="SmartSprinkler: Water Tank Low!",
+                body="The water tank is running low. Please refill the cistern.",
+            )
+        st._water_low_alert = water_low
+
+        raw_temp = float(status["air_temperature"])
+        raw_humid = float(status["air_humidity"])
+        if raw_temp < 0:
+            raw_temp = wx.get("temperature") or 25.0
+        if raw_humid < 0:
+            raw_humid = 50.0
+        temp = st.esp.discretize_temperature(raw_temp)
+        humid = st.esp.discretize_humidity(raw_humid)
 
         for plant_name, cfg in st.config["plants"].items():
             sensor_idx = cfg.get("sensor_index", 0)

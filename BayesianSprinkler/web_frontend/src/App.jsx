@@ -19,7 +19,7 @@ function Toast({ message, type }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [toast, setToast] = useState(null)
-  const { espData, espHealthy, plantStatuses, weather, error, loading } = useDashboard()
+  const { espData, espHealthy, waterLowAlert, plantStatuses, weather, error, loading } = useDashboard()
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ message: msg, type })
@@ -35,7 +35,7 @@ export default function App() {
             <span className="text-2xl">🌿</span>
             <h1 className="text-xl font-bold text-gray-800">SmartSprinkler</h1>
           </div>
-          <HealthBar espOnline={espHealthy} bayesianOnline={!error} />
+          <HealthBar espOnline={espHealthy} bayesianOnline={!error} waterLowAlert={waterLowAlert} />
         </div>
         {/* Nav tabs */}
         <div className="max-w-6xl mx-auto px-4 flex gap-1">

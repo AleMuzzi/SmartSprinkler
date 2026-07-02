@@ -5,6 +5,7 @@ import { loadPollingInterval } from '../services/settings.js'
 export function useDashboard() {
   const [espData, setEspData] = useState(null)
   const [espHealthy, setEspHealthy] = useState(false)
+  const [waterLowAlert, setWaterLowAlert] = useState(false)
   const [plantStatuses, setPlantStatuses] = useState([])
   const [weather, setWeather] = useState(null)
   const [error, setError] = useState(null)
@@ -21,6 +22,7 @@ export function useDashboard() {
 
       if (dashboardRes.status === 'fulfilled') {
         setEspData(dashboardRes.value.esp)
+        setWaterLowAlert(dashboardRes.value.water_low_alert ?? false)
         setPlantStatuses(dashboardRes.value.plants || [])
         setWeather(dashboardRes.value.weather)
         setError(null)
@@ -40,5 +42,5 @@ export function useDashboard() {
     return () => clearInterval(interval)
   }, [fetch])
 
-  return { espData, espHealthy, plantStatuses, weather, error, loading, refetch: fetch }
+  return { espData, espHealthy, waterLowAlert, plantStatuses, weather, error, loading, refetch: fetch }
 }

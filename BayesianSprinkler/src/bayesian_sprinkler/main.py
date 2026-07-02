@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -12,7 +13,9 @@ def load_config(path: str | None = None) -> dict:
     if path is None:
         path = str(Path(__file__).resolve().parent.parent.parent / "config.yaml")
     with open(path) as f:
-        return yaml.safe_load(f)
+        content = f.read()
+    content = os.path.expandvars(content)
+    return yaml.safe_load(content)
 
 
 def main():

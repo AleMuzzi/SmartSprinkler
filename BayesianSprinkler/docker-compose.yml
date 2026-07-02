@@ -10,7 +10,12 @@ services:
       - ./scripts:/app/scripts:ro
     environment:
       - PYTHONUNBUFFERED=1
-      - VALIDATION_SCHEDULE=0 6 * * *  # supercronic crontab format: daily at 06:00
+      - VALIDATION_SCHEDULE=0 6 * * *
+      - EMAIL_SENDER=${EMAIL_SENDER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_RECIPIENT=${EMAIL_RECIPIENT}
+      - WEATHER_LATITUDE=${WEATHER_LATITUDE}
+      - WEATHER_LONGITUDE=${WEATHER_LONGITUDE}
     networks:
       - sprinkler-net
 
