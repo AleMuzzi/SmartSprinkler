@@ -1,27 +1,26 @@
 // SmartSprinkler — Nano Sensor Reader
-// Reads 4 HW-390 soil moisture sensors + DHT22 and sends to ESP32-CAM via serial.
+// Reads 4 HW-390 soil moisture sensors + DHT22 + float switch and sends to ESP32-CAM via serial.
 
 #include <Arduino.h>
 #include <SoftwareSerial.h>
-#include "temp_humidity_sensor.h"
+#include "sensors/temp_humidity_sensor.h"
 
 const int RX_PIN = 4;
 const int TX_PIN = 3;
+const int FLOAT_PIN = 5;
 
 const int SENSOR_PINS[4] = {A0, A1, A2, A3};
 
 SoftwareSerial espSerial(RX_PIN, TX_PIN);
 
 void setup() {
-    Serial.begin(115200);
     espSerial.begin(9600);
     TempHumiditySensor::init();
+    pinMode(FLOAT_PIN, INPUT_PULLUP);
 
     for (int i = 0; i < 4; i++) {
         pinMode(SENSOR_PINS[i], INPUT);
     }
-
-    Serial.println("Nano Sensor Reader ready (soil + DHT22)");
 }
 
 void loop() {
@@ -36,15 +35,19 @@ void loop() {
     if (isnan(temp)) temp = -1;
     if (isnan(hum)) hum = -1;
 
+    int water_ok = digitalRead(FLOAT_PIN) == LOW ? 1 : 0;
+
     espSerial.print("S:");
     for (int i = 0; i < 4; i++) {
         espSerial.print(soil[i]);
-        if (i < 3) espSerial.print(',');
+        if (i < 3) espSerial.print('#');
     }
-    espSerial.print(',');
+    espSerial.print('#');
     espSerial.print(temp, 1);
-    espSerial.print(',');
+    espSerial.print('#');
     espSerial.print(hum, 1);
+    espSerial.print('#');
+    espSerial.print(water_ok);
     espSerial.print('\n');
 
     delay(500);

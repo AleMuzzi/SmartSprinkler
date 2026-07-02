@@ -5,7 +5,6 @@
 #include "actuator.h"
 
 #include <Arduino.h>
-#include <cstdint>
 
 Actuator::Actuator(const uint8_t pin): pin(pin) {
     pinMode(pin, OUTPUT);

@@ -13,7 +13,7 @@
 #include "model/route.h"
 #include "sensors/actuator.h"
 
-#include "sensors/camera.h"
+#include "camera.h"
 #include "sensors/temp_humidity_sensor.h"
 #include "services/CommandManager.h"
 #include "utils/hashtable_ext.h"
@@ -51,8 +51,8 @@ String WiFiAddr = "";
 unsigned long previousMillis = 0;
 constexpr long interval = 2000;
 
-float air_temperature = 25.0;
-float air_humidity = 50.0;
+float air_temperature = -1;
+float air_humidity = -1;
 float soil_moisture;
 
 CommandManager command_manager;
@@ -140,10 +140,12 @@ void loop() {
         previousMillis = currentMillis;
         read_nano_soil_moistures();
 
-        Serial.printf("[%lu] SM=[%d,%d,%d,%d]\n",
+        Serial.printf("[%lu] T=%.1f H=%.1f SM=[%d,%d,%d,%d] WL=%s\n",
             currentMillis / 1000,
+            air_temperature, air_humidity,
             soil_moisture_raw[0], soil_moisture_raw[1],
-            soil_moisture_raw[2], soil_moisture_raw[3]);
+            soil_moisture_raw[2], soil_moisture_raw[3],
+            water_low_alert ? "LOW" : "OK");
     }
 
     if (!command_manager.is_stopped()) {
@@ -327,77 +329,22 @@ const char* target_to_string(const Target::Value target) {
     return "UNKNOWN";
 }
 
-#define NANO_LINE_MAX 32
+#define NANO_LINE_MAX 64
 static char nano_line[NANO_LINE_MAX];
 static int nano_line_idx = 0;
 
 static void parse_nano_line(const char* line) {
-    if (line[0] != 'S' || line[1] != ':') return;
-    int idx = 2;
-    for (int ch = 0; ch < 4; ch++) {
-        int value = 0;
-        bool has_digit = false;
-        while (line[idx] >= '0' && line[idx] <= '9') {
-            value = value * 10 + (line[idx] - '0');
-            idx++;
-            has_digit = true;
-        }
-        if (!has_digit) return;
-        soil_moisture_raw[ch] = value;
-        if (line[idx] == ',') {
-            idx++;
-        } else if (line[idx] == '\0') {
-            return;
-        } else {
-            return;
-        }
+    int s0, s1, s2, s3, water_ok;
+    float temp, hum;
+    if (sscanf(line, "S:%d#%d#%d#%d#%f#%f#%d", &s0, &s1, &s2, &s3, &temp, &hum, &water_ok) == 7) {
+        soil_moisture_raw[0] = s0;
+        soil_moisture_raw[1] = s1;
+        soil_moisture_raw[2] = s2;
+        soil_moisture_raw[3] = s3;
+        water_low_alert = (water_ok == 0);
+        if (temp != -1) air_temperature = temp;
+        if (hum != -1) air_humidity = hum;
     }
-    if (line[idx] != ',') return;
-    idx++;
-    float temp = -1, hum = -1;
-    if (line[idx] != '-') {
-        int t = 0;
-        bool has_digit = false;
-        while (line[idx] >= '0' && line[idx] <= '9') {
-            t = t * 10 + (line[idx] - '0');
-            idx++;
-            has_digit = true;
-        }
-        if (has_digit) temp = t;
-        if (line[idx] == '.') {
-            idx++;
-            int decimals = 0;
-            int mult = 1;
-            while (line[idx] >= '0' && line[idx] <= '9' && decimals < 1) {
-                mult *= 10;
-                temp += (line[idx] - '0') * 1.0f / mult;
-                idx++;
-                decimals++;
-            }
-        }
-    } else {
-        idx++;
-        int t = 0;
-        bool has_digit = false;
-        while (line[idx] >= '0' && line[idx] <= '9') {
-            t = t * 10 + (line[idx] - '0');
-            idx++;
-            has_digit = true;
-        }
-        if (has_digit) temp = -t;
-    }
-    if (line[idx] != ',') return;
-    idx++;
-    int h = 0;
-    bool has_digit = false;
-    while (line[idx] >= '0' && line[idx] <= '9') {
-        h = h * 10 + (line[idx] - '0');
-        idx++;
-        has_digit = true;
-    }
-    if (has_digit) hum = h;
-    if (temp > 0) air_temperature = temp;
-    if (hum > 0) air_humidity = hum;
 }
 
 void read_nano_soil_moistures() {

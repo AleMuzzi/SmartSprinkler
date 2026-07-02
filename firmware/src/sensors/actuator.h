@@ -4,8 +4,7 @@
 
 #ifndef ACTUATOR_H
 #define ACTUATOR_H
-
-#include <cstdint>
+#include <stdint.h>
 
 
 class Actuator {
