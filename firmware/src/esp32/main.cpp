@@ -51,8 +51,8 @@ String WiFiAddr = "";
 unsigned long previousMillis = 0;
 constexpr long interval = 2000;
 
-float air_temperature;
-float air_humidity;
+float air_temperature = 25.0;
+float air_humidity = 50.0;
 float soil_moisture;
 
 CommandManager command_manager;
@@ -99,7 +99,7 @@ void setup() {
     Serial.println("###############################");
     Serial.println();
 
-    Camera::init();
+    // Camera::init();
 
     Serial.print("Device's MAC Address: ");
     Serial.println(WiFi.macAddress());
@@ -118,15 +118,13 @@ void setup() {
 
     water_pump.switch_off();
 
-    NanoSerial.begin(9600, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
-    Serial.println("Nano UART2 initialized (RX=14, TX=15)");
-
-    TempHumiditySensor::init();
-
     rotary_servo.attach(PIN_ROTARY_SERVO, SERVO_MIN_US, SERVO_MAX_US);
     Serial.println("Rotary servo attached (GPIO 13)");
 
     calibrate_rotary();
+
+    NanoSerial.begin(9600, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
+    Serial.println("Nano UART2 initialized (RX=14, TX=15)");
 
     command_manager.init();
     setup_command_routes();
@@ -140,26 +138,12 @@ void loop() {
 
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
-
-        air_temperature = TempHumiditySensor::getTemperature();
-        if (!isnan(air_temperature)) {
-            Serial.print("Temperature: ");
-            Serial.println(air_temperature);
-        }
-
-        air_humidity = TempHumiditySensor::getHumidity();
-        if (!isnan(air_humidity)) {
-            Serial.print("Humidity: ");
-            Serial.println(air_humidity);
-        }
-
         read_nano_soil_moistures();
-        Serial.print("Soil moisture ADC: ");
-        Serial.print(soil_moisture_raw[0]); Serial.print(", ");
-        Serial.print(soil_moisture_raw[1]); Serial.print(", ");
-        Serial.print(soil_moisture_raw[2]); Serial.print(", ");
-        Serial.println(soil_moisture_raw[3]);
-        Serial.println("-------------------------------");
+
+        Serial.printf("[%lu] SM=[%d,%d,%d,%d]\n",
+            currentMillis / 1000,
+            soil_moisture_raw[0], soil_moisture_raw[1],
+            soil_moisture_raw[2], soil_moisture_raw[3]);
     }
 
     if (!command_manager.is_stopped()) {
@@ -177,7 +161,7 @@ void loop() {
         }
     }
 
-    delay(100);
+    delay(10);
 }
 
 static void sendCorsJson(MongooseHttpServerRequest *req, int code, const char *content) {
@@ -368,6 +352,52 @@ static void parse_nano_line(const char* line) {
             return;
         }
     }
+    if (line[idx] != ',') return;
+    idx++;
+    float temp = -1, hum = -1;
+    if (line[idx] != '-') {
+        int t = 0;
+        bool has_digit = false;
+        while (line[idx] >= '0' && line[idx] <= '9') {
+            t = t * 10 + (line[idx] - '0');
+            idx++;
+            has_digit = true;
+        }
+        if (has_digit) temp = t;
+        if (line[idx] == '.') {
+            idx++;
+            int decimals = 0;
+            int mult = 1;
+            while (line[idx] >= '0' && line[idx] <= '9' && decimals < 1) {
+                mult *= 10;
+                temp += (line[idx] - '0') * 1.0f / mult;
+                idx++;
+                decimals++;
+            }
+        }
+    } else {
+        idx++;
+        int t = 0;
+        bool has_digit = false;
+        while (line[idx] >= '0' && line[idx] <= '9') {
+            t = t * 10 + (line[idx] - '0');
+            idx++;
+            has_digit = true;
+        }
+        if (has_digit) temp = -t;
+    }
+    if (line[idx] != ',') return;
+    idx++;
+    int h = 0;
+    bool has_digit = false;
+    while (line[idx] >= '0' && line[idx] <= '9') {
+        h = h * 10 + (line[idx] - '0');
+        idx++;
+        has_digit = true;
+    }
+    if (has_digit) hum = h;
+    if (temp > 0) air_temperature = temp;
+    if (hum > 0) air_humidity = hum;
 }
 
 void read_nano_soil_moistures() {
