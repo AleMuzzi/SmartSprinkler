@@ -281,15 +281,23 @@ def _register_routes(app: FastAPI):
         },
     )
     def get_weather_status():
+        raw_temp = None
+        raw_humid = None
+
         try:
             esp_status = state.esp.get_status()
+            raw_temp = esp_status.get("air_temperature")
+            raw_humid = esp_status.get("air_humidity")
         except Exception:
-            esp_status = {}
+            pass
 
-        raw_humid = float(esp_status.get("air_humidity", 50))
+        if raw_temp is None:
+            raw_temp = state._cached_weather.get("temperature")
+        if raw_humid is None:
+            raw_humid = 50.0
 
         return WeatherResponse(
-            temperature=state._cached_weather.get("temperature"),
+            temperature=raw_temp,
             humidity=raw_humid,
             cloud_cover=state._cached_weather["cloud_cover"],
             rain_forecast=state._cached_weather["rain_forecast"],
