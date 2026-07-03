@@ -5,13 +5,16 @@ from pathlib import Path
 
 import uvicorn
 import yaml
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
 
 def load_config(path: str | None = None) -> dict:
     if path is None:
-        path = str(Path(__file__).resolve().parent.parent.parent / "config.yaml")
+        root = Path(__file__).resolve().parent.parent.parent
+        path = str(root / "config.yaml")
+        load_dotenv(root / ".env", override=False)
     with open(path) as f:
         content = f.read()
     content = os.path.expandvars(content)

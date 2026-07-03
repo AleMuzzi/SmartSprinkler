@@ -108,6 +108,7 @@ async def lifespan(app: FastAPI):
     )
     state.scheduler.start()
     _poll_weather(state)
+    _inference_cycle(state)
     logger.info("API server started — scheduler running")
     yield
     if state.scheduler:
