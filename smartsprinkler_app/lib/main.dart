@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'ui/dashboard/audit_log_view.dart';
 import 'ui/dashboard/dashboard_viewmodel.dart';
 import 'ui/dashboard/dashboard_view.dart';
 import 'ui/dashboard/system_control_view.dart';
@@ -111,6 +112,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> with WidgetsBin
           children: const [
             DashboardView(),
             CameraView(),
+            AuditLogView(),
             SystemControlView(),
           ],
         ),
@@ -133,6 +135,11 @@ class _MainNavigationPageState extends State<MainNavigationPage> with WidgetsBin
               icon: Icon(Icons.videocam_outlined),
               selectedIcon: Icon(Icons.videocam, color: Color(0xFF4CAF50)),
               label: 'Camera',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.list_alt_outlined),
+              selectedIcon: Icon(Icons.list_alt, color: Color(0xFF4CAF50)),
+              label: 'Logs',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

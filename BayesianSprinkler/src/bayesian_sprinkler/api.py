@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from bayesian_sprinkler.audit_log import init_audit_table, log_event, get_log_entries, clear_log
 from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
 from bayesian_sprinkler.database import init_db, insert_record
 from bayesian_sprinkler.notifier import send_email_alert
@@ -88,6 +89,7 @@ class DashboardResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    init_audit_table()
     state.scheduler = BackgroundScheduler()
     _schedule_hourly_poll(state, interval_minutes=60)
     state.scheduler.add_job(
@@ -213,6 +215,8 @@ def _register_routes(app: FastAPI):
 
         if status.get("water_low_alert") == "on":
             logger.warning("Water low alert — blocked watering for %s", req.plant_type)
+            log_event("command", f"Manual watering blocked: {cfg['display_name']}",
+                      details=f"reason=water_low_alert")
             raise HTTPException(
                 503,
                 f"Water level low — blocked. Use force=true to override."
@@ -222,6 +226,8 @@ def _register_routes(app: FastAPI):
         state.esp.start_watering(cfg["esp_target"])
         time.sleep(cfg["watering_duration"])
         state.esp.stop_watering(cfg["esp_target"])
+        log_event("command", f"Manual watering: {cfg['display_name']}",
+                  details=f"target={cfg['esp_target']} duration={cfg['watering_duration']}s")
 
         return {"status": "ok", "plant": req.plant_type}
 
@@ -232,6 +238,44 @@ def _register_routes(app: FastAPI):
         responses={200: {"description": "Server is healthy"}},
     )
     def health():
+        return {"status": "ok"}
+
+    @app.get(
+        "/api/audit-log",
+        tags=["System"],
+        summary="Audit log of inferences and ESP commands",
+        responses={200: {"description": "Audit log entries (newest first)"}},
+    )
+    def audit_log(
+        filter: str | None = None,
+        category: str | None = None,
+        limit: int = 200,
+    ):
+        from fastapi import Query
+        rows = get_log_entries(filter_text=filter, category=category, limit=limit)
+        return {
+            "entries": [
+                {
+                    "id": row["id"],
+                    "timestamp": row["timestamp"],
+                    "category": row["category"],
+                    "message": row["message"],
+                    "details": row["details"],
+                }
+                for row in rows
+            ],
+            "count": len(rows),
+            "filter": filter,
+            "category": category,
+        }
+
+    @app.delete(
+        "/api/audit-log",
+        tags=["System"],
+        summary="Clear all audit log entries",
+    )
+    def audit_log_clear():
+        clear_log()
         return {"status": "ok"}
 
     @app.get(
@@ -431,6 +475,8 @@ def _hourly_poll(st: AppState):
     )
 
     _reschedule_poll(st, interval, raw_temp)
+    log_event("config", f"Adjusted poll interval to {interval} minutes",
+              details=f"temperature={raw_temp:.1f}°C state={temp_state}")
 
     try:
         wx = st.weather.fetch()
@@ -485,8 +531,11 @@ def _log_and_insert(st: AppState, wx: dict):
             )
         logger.info("Hourly poll: logged %d plants (need_water=no)",
                     len(st.config["plants"]))
+        log_event("inference", f"Hourly poll: logged {len(st.config['plants'])} plants",
+                  details=f"cloud_cover={wx['cloud_cover']} rain={wx['rain_forecast']}")
     except Exception:
         logger.exception("Hourly poll failed")
+        log_event("error", "Hourly poll failed", details="See server logs for traceback")
 
 
 def _inference_cycle(st: AppState):
@@ -503,6 +552,8 @@ def _inference_cycle(st: AppState):
                 subject="SmartSprinkler: Water Tank Low!",
                 body="The water tank is running low. Please refill the cistern.",
             )
+            log_event("alert", "Water tank low alert triggered",
+                      details=f"ESP status: water_low_alert=on")
         st._water_low_alert = water_low
 
         raw_temp = float(status["air_temperature"])
@@ -514,6 +565,7 @@ def _inference_cycle(st: AppState):
         temp = st.esp.discretize_temperature(raw_temp)
         humid = st.esp.discretize_humidity(raw_humid)
 
+        triggered_plants = []
         for plant_name, cfg in st.config["plants"].items():
             sensor_idx = cfg.get("sensor_index", 0)
             raw_sm = status.get(f"soil_moisture_{sensor_idx}")
@@ -550,7 +602,21 @@ def _inference_cycle(st: AppState):
                 st.esp.start_watering(cfg["esp_target"])
                 time.sleep(cfg["watering_duration"])
                 st.esp.stop_watering(cfg["esp_target"])
+                log_event("command", f"Watering triggered: {cfg['display_name']}",
+                          details=f"target={cfg['esp_target']} duration={cfg['watering_duration']}s prob={prob:.2f} threshold={threshold}")
+                triggered_plants.append(cfg["display_name"])
             elif will_water:
                 logger.info("  Skipped — water low alert active")
+                log_event("inference", f"Watering skipped (low water): {cfg['display_name']}",
+                          details=f"prob={prob:.2f} threshold={threshold}")
+
+        details = (f"plants={[c['display_name'] for c in st.config['plants'].values()]}; "
+                   f"soil_moisture={status['soil_moisture']}; "
+                   f"air_temp={status['air_temperature']}; air_humid={status['air_humidity']}; "
+                   f"cloud_cover={wx['cloud_cover']}; rain={wx['rain_forecast']}; "
+                   f"watered={triggered_plants}")
+        log_event("inference", f"Inference cycle completed ({len(triggered_plants)} watered)",
+                  details=details)
     except Exception:
         logger.exception("Inference cycle failed")
+        log_event("error", "Inference cycle failed", details="See server logs for traceback")

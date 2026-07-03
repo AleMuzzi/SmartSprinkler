@@ -75,6 +75,19 @@ export async function fetchDashboard() {
   return res.json()
 }
 
+export async function fetchAuditLog({ filter = '', category = null, limit = 200 } = {}) {
+  const { bayesianUrl } = getSettings()
+  const params = new URLSearchParams()
+  if (filter) params.set('filter', filter)
+  if (category) params.set('category', category)
+  if (limit) params.set('limit', String(limit))
+  const qs = params.toString()
+  const url = `${bayesianUrl}/api/audit-log${qs ? '?' + qs : ''}`
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) throw new Error(`Audit log failed: ${res.status}`)
+  return res.json()
+}
+
 export async function sendBayesianManualWater(plantType) {
   const { bayesianUrl } = getSettings()
   const res = await fetchWithTimeout(`${bayesianUrl}/api/plants/manual-water`, {

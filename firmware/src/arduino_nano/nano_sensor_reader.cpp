@@ -50,5 +50,5 @@ void loop() {
     espSerial.print(water_ok);
     espSerial.print('\n');
 
-    delay(500);
+    delay(1000);
 }
