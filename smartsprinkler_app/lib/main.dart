@@ -4,13 +4,34 @@ import 'package:provider/provider.dart';
 import 'ui/dashboard/dashboard_viewmodel.dart';
 import 'ui/dashboard/dashboard_view.dart';
 import 'ui/dashboard/system_control_view.dart';
+import 'ui/camera/camera_view.dart';
+import 'data/water_alert_service.dart';
+import 'data/settings.dart';
+import 'data/sprinkler.dart';
 
-void main() {
-  runApp(const SmartSprinklerApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await WaterAlertService.setAppForeground(true);
+
+  final settings = Settings();
+  await settings.load();
+
+  final sprinkler = Sprinkler();
+  await sprinkler.restoreWaterAlertState();
+
+  final alertService = WaterAlertService();
+  await alertService.init(settings.apiUrl);
+  final hasPermission = await alertService.ensureNotificationPermission();
+  await alertService.start();
+
+  runApp(SmartSprinklerApp(hasNotificationPermission: hasPermission));
 }
 
 class SmartSprinklerApp extends StatelessWidget {
-  const SmartSprinklerApp({super.key});
+  const SmartSprinklerApp({super.key, this.hasNotificationPermission = true});
+
+  final bool hasNotificationPermission;
 
   @override
   Widget build(BuildContext context) {
@@ -22,20 +43,63 @@ class SmartSprinklerApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5F7FA),
       ),
-      home: const MainNavigationPage(),
+      home: MainNavigationPage(hasNotificationPermission: hasNotificationPermission),
     );
   }
 }
 
 class MainNavigationPage extends StatefulWidget {
-  const MainNavigationPage({super.key});
+  const MainNavigationPage({super.key, this.hasNotificationPermission = true});
+
+  final bool hasNotificationPermission;
 
   @override
   State<MainNavigationPage> createState() => _MainNavigationPageState();
 }
 
-class _MainNavigationPageState extends State<MainNavigationPage> {
+class _MainNavigationPageState extends State<MainNavigationPage> with WidgetsBindingObserver {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!widget.hasNotificationPermission) {
+        _showNotificationPermissionDialog();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    WaterAlertService.setAppForeground(state == AppLifecycleState.resumed);
+  }
+
+  void _showNotificationPermissionDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Notifications disabled'),
+        content: const Text(
+          'SmartSprinkler needs notification permission to alert you when the water tank is low.\n\n'
+          'Enable notifications in: Settings → Apps → SmartSprinkler → Notifications',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +110,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           index: _currentIndex,
           children: const [
             DashboardView(),
+            CameraView(),
             SystemControlView(),
           ],
         ),
@@ -63,6 +128,11 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
               icon: Icon(Icons.dashboard_outlined),
               selectedIcon: Icon(Icons.dashboard, color: Color(0xFF4CAF50)),
               label: 'Dashboard',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.videocam_outlined),
+              selectedIcon: Icon(Icons.videocam, color: Color(0xFF4CAF50)),
+              label: 'Camera',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

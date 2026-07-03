@@ -71,12 +71,10 @@ class DashboardViewModel extends ChangeNotifier {
     _fetchEspStatus();
     _fetchBayesianStatus();
     _fetchWeatherStatus();
-    _checkConnectivity();
 
     _espTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspStatus());
     _bayesianTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchBayesianStatus());
     Timer.periodic(const Duration(seconds: 30), (_) => _fetchWeatherStatus());
-    Timer.periodic(const Duration(seconds: 10), (_) => _checkConnectivity());
   }
 
   @override
@@ -90,6 +88,9 @@ class DashboardViewModel extends ChangeNotifier {
   void _notify() {
     if (!_disposed) notifyListeners();
   }
+
+  Future<void> fetchEspStatus() => _fetchEspStatus();
+  Future<void> fetchBayesianStatus() => _fetchBayesianStatus();
 
   Future<void> _fetchEspStatus() async {
     debugPrint('[_fetchEspStatus] URL: ${settings.apiUrl}/status');
@@ -127,15 +128,16 @@ class DashboardViewModel extends ChangeNotifier {
             plant.isWatering = false;
           }
         }
-
-        _espStatus = ConnectivityStatus.connected;
-        _notify();
       }
+
+      _espStatus = response.statusCode == 200
+          ? ConnectivityStatus.connected
+          : ConnectivityStatus.disconnected;
     } catch (e) {
       log('ESP status fetch error: $e');
       _espStatus = ConnectivityStatus.disconnected;
-      _notify();
     }
+    _notify();
   }
 
   void _updatePlantSoilMoisture(int index, double moisture) {
@@ -190,15 +192,16 @@ class DashboardViewModel extends ChangeNotifier {
         }
         _averageProbabilityOfNeed = count > 0 ? sum / count : 0.0;
         debugPrint('[_fetchBayesianStatus] average: $_averageProbabilityOfNeed');
-
-        _bayesianStatus = ConnectivityStatus.connected;
-        _notify();
       }
+
+      _bayesianStatus = response.statusCode == 200
+          ? ConnectivityStatus.connected
+          : ConnectivityStatus.disconnected;
     } catch (e) {
       log('Bayesian status fetch error: $e');
       _bayesianStatus = ConnectivityStatus.disconnected;
-      _notify();
     }
+    _notify();
   }
 
   Future<void> _fetchWeatherStatus() async {
@@ -220,39 +223,6 @@ class DashboardViewModel extends ChangeNotifier {
     } catch (e) {
       log('Weather status fetch error: $e');
     }
-  }
-
-  Future<void> _checkConnectivity() async {
-    checkEspConnectivity();
-    checkBayesianConnectivity();
-  }
-
-  Future<void> checkEspConnectivity() async {
-    try {
-      final response = await http.get(
-        Uri.parse('${settings.apiUrl}/health'),
-      ).timeout(const Duration(seconds: 3));
-      _espStatus = response.statusCode == 200
-          ? ConnectivityStatus.connected
-          : ConnectivityStatus.disconnected;
-    } catch (e) {
-      _espStatus = ConnectivityStatus.disconnected;
-    }
-    _notify();
-  }
-
-  Future<void> checkBayesianConnectivity() async {
-    try {
-      final response = await http.get(
-        Uri.parse('${settings.bayesianUrl}/api/health'),
-      ).timeout(const Duration(seconds: 3));
-      _bayesianStatus = response.statusCode == 200
-          ? ConnectivityStatus.connected
-          : ConnectivityStatus.disconnected;
-    } catch (e) {
-      _bayesianStatus = ConnectivityStatus.disconnected;
-    }
-    _notify();
   }
 
   Future<void> waterPlantNow(PlantData plant, {bool viaBayesian = true}) async {

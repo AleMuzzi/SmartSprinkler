@@ -139,7 +139,12 @@ def create_app(config: dict) -> FastAPI:
     app = FastAPI(lifespan=lifespan, title="BayesianSprinkler")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -254,21 +259,27 @@ def _register_routes(app: FastAPI):
 
         plants = []
         for plant_name in state.config["plants"]:
+            sensor_idx = state.config["plants"][plant_name].get("sensor_index", 0)
+            raw_sm = esp_status.get(f"soil_moisture_{sensor_idx}") if esp_status else None
+            plant_sm = float(raw_sm) if raw_sm is not None else raw_soil
+            plant_soil = state.esp.discretize_soil_moisture(plant_sm)
+
             with state.lock:
                 prob = state.bn.query(
                     plant=plant_name,
                     temperature=temp,
                     humidity=humid,
                     cloud_cover=state._cached_weather["cloud_cover"],
-                    soil_moisture=soil,
+                    soil_moisture=plant_soil,
                     rain_forecast=state._cached_weather["rain_forecast"],
                 )
 
-            evidence_nodes = _build_evidence_nodes(soil, temp, humid, state._cached_weather["cloud_cover"], state._cached_weather["rain_forecast"])
+            evidence_nodes = _build_evidence_nodes(plant_soil, temp, humid, state._cached_weather["cloud_cover"], state._cached_weather["rain_forecast"])
 
             plants.append(PlantStatus(
                 plant_id=plant_name,
                 probability_of_need=round(prob, 2),
+                soil_moisture=plant_sm,
                 evidence_nodes=evidence_nodes,
             ))
 
@@ -339,9 +350,9 @@ def _register_routes(app: FastAPI):
         plants = []
         for plant_name in state.config["plants"]:
             sensor_idx = state.config["plants"][plant_name].get("sensor_index", 0)
-            raw_sm = esp_status.get(f"soil_moisture_{sensor_idx}")
-            plant_sm = float(raw_sm) if raw_sm is not None else None
-            soil = state.esp.discretize_soil_moisture(plant_sm if plant_sm is not None else raw_soil_avg)
+            raw_sm = esp_status.get(f"soil_moisture_{sensor_idx}") if esp_status else None
+            plant_sm = float(raw_sm) if raw_sm is not None else raw_soil_avg
+            plant_soil = state.esp.discretize_soil_moisture(plant_sm)
 
             with state.lock:
                 prob = state.bn.query(
@@ -349,11 +360,11 @@ def _register_routes(app: FastAPI):
                     temperature=temp,
                     humidity=humid,
                     cloud_cover=state._cached_weather["cloud_cover"],
-                    soil_moisture=soil,
+                    soil_moisture=plant_soil,
                     rain_forecast=state._cached_weather["rain_forecast"],
                 )
             evidence_nodes = _build_evidence_nodes(
-                soil, temp, humid,
+                plant_soil, temp, humid,
                 state._cached_weather["cloud_cover"],
                 state._cached_weather["rain_forecast"],
             )

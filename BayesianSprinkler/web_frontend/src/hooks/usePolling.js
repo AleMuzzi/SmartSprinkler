@@ -1,33 +1,26 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchEspHealth, fetchDashboard } from '../services/api.js'
-import { loadPollingInterval } from '../services/settings.js'
+import { fetchEspStatus, fetchEspHealth, fetchBayesianPlantStatus } from '../services/api.js'
 
-export function useDashboard() {
+export function useEspData() {
   const [espData, setEspData] = useState(null)
   const [espHealthy, setEspHealthy] = useState(false)
   const [waterLowAlert, setWaterLowAlert] = useState(false)
-  const [plantStatuses, setPlantStatuses] = useState([])
-  const [weather, setWeather] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const fetch = useCallback(async () => {
     try {
-      const [espRes, dashboardRes] = await Promise.allSettled([
+      const [healthRes, statusRes] = await Promise.allSettled([
         fetchEspHealth(),
-        fetchDashboard(),
+        fetchEspStatus(),
       ])
 
-      setEspHealthy(espRes.status === 'fulfilled')
+      setEspHealthy(healthRes.status === 'fulfilled')
 
-      if (dashboardRes.status === 'fulfilled') {
-        setEspData(dashboardRes.value.esp)
-        setWaterLowAlert(dashboardRes.value.water_low_alert ?? false)
-        setPlantStatuses(dashboardRes.value.plants || [])
-        setWeather(dashboardRes.value.weather)
+      if (statusRes.status === 'fulfilled') {
+        setEspData(statusRes.value)
+        setWaterLowAlert(statusRes.value.water_low_alert === 'on')
         setError(null)
-      } else {
-        setError(dashboardRes.reason?.message || 'Dashboard unavailable')
       }
     } catch (e) {
       setError(e.message)
@@ -38,9 +31,35 @@ export function useDashboard() {
 
   useEffect(() => {
     fetch()
-    const interval = setInterval(fetch, loadPollingInterval())
+    const interval = setInterval(fetch, 5000)
     return () => clearInterval(interval)
   }, [fetch])
 
-  return { espData, espHealthy, waterLowAlert, plantStatuses, weather, error, loading, refetch: fetch }
+  return { espData, espHealthy, waterLowAlert, error, loading, refetch: fetch }
+}
+
+export function usePlantStatuses() {
+  const [plantStatuses, setPlantStatuses] = useState([])
+  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const fetch = useCallback(async () => {
+    try {
+      const res = await fetchBayesianPlantStatus()
+      setPlantStatuses(res.plants || [])
+      setError(null)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetch()
+    const interval = setInterval(fetch, 30000)
+    return () => clearInterval(interval)
+  }, [fetch])
+
+  return { plantStatuses, error, loading, refetch: fetch }
 }

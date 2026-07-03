@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
-import { useDashboard } from './hooks/usePolling.js'
-import { TelemetryPanel, WeatherPanel } from './components/TelemetryPanel.jsx'
+import { useEspData, usePlantStatuses } from './hooks/usePolling.js'
+import { TelemetryPanel } from './components/TelemetryPanel.jsx'
 import { BayesianInsights } from './components/BayesianInsights.jsx'
 import { ControlPanel } from './components/ControlPanel.jsx'
 import { SettingsPanel } from './components/SettingsPanel.jsx'
@@ -19,7 +19,8 @@ function Toast({ message, type }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [toast, setToast] = useState(null)
-  const { espData, espHealthy, waterLowAlert, plantStatuses, weather, error, loading } = useDashboard()
+  const { espData, espHealthy, waterLowAlert, error, loading } = useEspData()
+  const { plantStatuses } = usePlantStatuses()
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ message: msg, type })
@@ -71,9 +72,6 @@ export default function App() {
             ) : (
               <TelemetryPanel espData={espData} />
             )}
-
-            {/* Weather */}
-            <WeatherPanel weather={weather} />
 
             {/* Bayesian insights */}
             {error ? null : (

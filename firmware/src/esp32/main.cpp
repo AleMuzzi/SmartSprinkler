@@ -182,6 +182,13 @@ void setup_command_routes() {
                     sendCorsJson(req, 200, R"({"status":"ok"})");
                 }
             });
+    routes.put("/water_alert", Route{
+                .http_method = HTTP_GET,
+                .from_json = nullptr,
+                .handler = [](MongooseHttpServerRequest *req, const std::shared_ptr<ICanBeDeserialized>& command) {
+                    sendCorsJson(req, 200, water_low_alert ? R"({"alert":true})" : R"({"alert":false})");
+                }
+            });
     routes.put("/command", Route{
                 .http_method = HTTP_POST,
                 .from_json = Command::from_json,
@@ -213,10 +220,10 @@ void setup_command_routes() {
                     status.put("soil_moisture", String(soil_moisture, 2));
                     status.put("water_pump", water_pump.is_on() ? "on" : "off");
                     status.put("rotary_position", rotary_calibrated ? String(rotary_current_position) : "uncalibrated");
-                    status.put("soil_moisture_0", String(soil_moisture_raw[0]));
-                    status.put("soil_moisture_1", String(soil_moisture_raw[1]));
-                    status.put("soil_moisture_2", String(soil_moisture_raw[2]));
-                    status.put("soil_moisture_3", String(soil_moisture_raw[3]));
+                    status.put("soil_moisture_0", String(constrain(map(soil_moisture_raw[0], SOIL_DRY_ADC, 0, 0, 100), 0, 100)));
+                    status.put("soil_moisture_1", String(constrain(map(soil_moisture_raw[1], SOIL_DRY_ADC, 0, 0, 100), 0, 100)));
+                    status.put("soil_moisture_2", String(constrain(map(soil_moisture_raw[2], SOIL_DRY_ADC, 0, 0, 100), 0, 100)));
+                    status.put("soil_moisture_3", String(constrain(map(soil_moisture_raw[3], SOIL_DRY_ADC, 0, 0, 100), 0, 100)));
                     status.put("water_low_alert", water_low_alert ? "on" : "off");
                     status.put("blocked_amount_ml", String(blocked_amount_ml));
                     status.put("active_plant", water_pump.is_on() ? target_to_string(active_target) : "null");
@@ -334,6 +341,11 @@ static char nano_line[NANO_LINE_MAX];
 static int nano_line_idx = 0;
 
 static void parse_nano_line(const char* line) {
+    if (line == nullptr || line[0] != 'S') {
+        while (NanoSerial.available()) NanoSerial.read();
+        nano_line_idx = 0;
+        return;
+    }
     int s0, s1, s2, s3, water_ok;
     float temp, hum;
     if (sscanf(line, "S:%d#%d#%d#%d#%f#%f#%d", &s0, &s1, &s2, &s3, &temp, &hum, &water_ok) == 7) {
@@ -352,10 +364,14 @@ void read_nano_soil_moistures() {
         const char c = NanoSerial.read();
         if (c == '\n') {
             nano_line[nano_line_idx] = '\0';
-            parse_nano_line(nano_line);
+            if (nano_line_idx > 0) {
+                parse_nano_line(nano_line);
+            }
             nano_line_idx = 0;
         } else if (c != '\r' && nano_line_idx < NANO_LINE_MAX - 1) {
             nano_line[nano_line_idx++] = c;
+        } else if (nano_line_idx >= NANO_LINE_MAX - 1) {
+            nano_line_idx = 0;
         }
     }
     if (!nano_connected && nano_line_idx > 0) {

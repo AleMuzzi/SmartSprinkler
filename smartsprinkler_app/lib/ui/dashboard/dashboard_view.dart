@@ -4,6 +4,8 @@ import 'package:syncfusion_flutter_gauges/gauges.dart';
 
 import '../../../data/models/plant_data.dart';
 import '../../../data/models/weather_data.dart';
+import '../../../data/sprinkler.dart';
+import '../home/low_water_alert_page.dart';
 import 'dashboard_viewmodel.dart';
 import 'plant_detail_view.dart';
 
@@ -17,6 +19,7 @@ class DashboardView extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
+            _WaterAlertBanner(),
             _TopGaugeSection(),
             Divider(height: 1, color: Color(0xFFE0E4E8)),
             Expanded(child: _PlantCarousel()),
@@ -25,6 +28,48 @@ class DashboardView extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _WaterAlertBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Sprinkler(),
+      builder: (context, _) {
+        final alert = Sprinkler().waterLowAlert;
+        if (!alert) return const SizedBox.shrink();
+        return Material(
+          color: Colors.orange.shade100,
+          child: InkWell(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LowWaterAlertPage()),
+            ),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.orange.shade700, width: 1)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "⚠️ Water tank low — irrigation disabled",
+                      style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: Colors.orange),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -267,7 +312,7 @@ class _PlantCard extends StatelessWidget {
         );
       },
       child: Container(
-        height: 320,
+        height: 340,
         margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -282,9 +327,10 @@ class _PlantCard extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              height: 140,
+              height: 160,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: plant.imageUrl.isNotEmpty

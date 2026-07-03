@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'water_alert_service.dart';
 
 class Sprinkler with ChangeNotifier {
   static final Sprinkler _instance = Sprinkler._(0.0, 0.0, 0.0, "off", false, 0, null, null);
@@ -31,6 +33,14 @@ class Sprinkler with ChangeNotifier {
 
   factory Sprinkler() {
     return _instance;
+  }
+
+  Future<void> restoreWaterAlertState() async {
+    final lastAlert = await WaterAlertService.getLastAlertState();
+    if (lastAlert != _waterLowAlert) {
+      _waterLowAlert = lastAlert;
+      notifyListeners();
+    }
   }
 
   void updateWithJson(Map<String, dynamic> json) {

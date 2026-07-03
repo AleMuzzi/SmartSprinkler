@@ -34,6 +34,10 @@ dependencies:
   fluttertoast: ^8.2.4
   syncfusion_flutter_gauges: ^28.2.9
   provider: ^6.1.2
+  flutter_local_notifications: ^18.0.1
+  flutter_background_service: ^5.0.9
+  shared_preferences: ^2.3.5
+  timezone: ^0.10.0
 
   cupertino_icons: ^1.0.8
 

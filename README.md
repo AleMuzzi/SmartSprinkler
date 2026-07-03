@@ -7,7 +7,7 @@ Autonomous irrigation system with Bayesian decision-making, ESP32 relay control,
 ```mermaid
 graph TB
     subgraph "ESP32 (C++ / PlatformIO)"
-        SENSORS["HW-390 soil moisture<br/>DHT22 temp/humidity<br/>MQ-135 air quality"]
+        SENSORS["HW-390 soil moisture<br/>DHT22 temp/humidity"]
         PUMP["Water pump relay (GPIO 12)"]
         API_ESP["HTTP API (:80)<br/>GET /status<br/>POST /command"]
     end

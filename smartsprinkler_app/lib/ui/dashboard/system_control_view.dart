@@ -76,14 +76,14 @@ class _ConnectivityCard extends StatelessWidget {
             label: 'ESP32 Controller',
             url: vm.settings.apiUrl,
             status: vm.espStatus,
-            onRefresh: vm.checkEspConnectivity,
+            onRefresh: vm.fetchEspStatus,
           ),
           const SizedBox(height: 14),
           _ConnectionRow(
             label: 'Bayesian Server',
             url: vm.settings.bayesianUrl,
             status: vm.bayesianStatus,
-            onRefresh: vm.checkBayesianConnectivity,
+            onRefresh: vm.fetchBayesianStatus,
           ),
         ],
       ),
@@ -202,16 +202,56 @@ class _ConnectionRow extends StatelessWidget {
   }
 }
 
-class _UrlsCard extends StatelessWidget {
+class _UrlsCard extends StatefulWidget {
   final DashboardViewModel vm;
 
   const _UrlsCard({required this.vm});
 
   @override
-  Widget build(BuildContext context) {
-    late final TextEditingController espController = TextEditingController(text: vm.settings.apiUrl);
-    late final TextEditingController bayesController = TextEditingController(text: vm.settings.bayesianUrl);
+  State<_UrlsCard> createState() => _UrlsCardState();
+}
 
+class _UrlsCardState extends State<_UrlsCard> {
+  late final TextEditingController _espController;
+  late final TextEditingController _bayesController;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _espController = TextEditingController();
+    _bayesController = TextEditingController();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      _espController.text = widget.vm.settings.apiUrl;
+      _bayesController.text = widget.vm.settings.bayesianUrl;
+    }
+  }
+
+  @override
+  void dispose() {
+    _espController.dispose();
+    _bayesController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    widget.vm.settings.apiUrl = _espController.text.trim();
+    widget.vm.settings.bayesianUrl = _bayesController.text.trim();
+    widget.vm.fetchEspStatus();
+    widget.vm.fetchBayesianStatus();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Settings saved'), duration: Duration(seconds: 2)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -244,7 +284,7 @@ class _UrlsCard extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           TextField(
-            controller: espController,
+            controller: _espController,
             decoration: InputDecoration(
               labelText: 'ESP Sprinkler URL',
               hintText: 'http://192.168.1.10',
@@ -252,11 +292,10 @@ class _UrlsCard extends StatelessWidget {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
-            onChanged: (value) => vm.settings.apiUrl = value,
           ),
           const SizedBox(height: 14),
           TextField(
-            controller: bayesController,
+            controller: _bayesController,
             decoration: InputDecoration(
               labelText: 'Bayesian Server URL',
               hintText: 'http://192.168.1.11:8080',
@@ -264,7 +303,21 @@ class _UrlsCard extends StatelessWidget {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
-            onChanged: (value) => vm.settings.bayesianUrl = value,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _save,
+              icon: const Icon(Icons.save),
+              label: const Text('Save'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4CAF50),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
           ),
         ],
       ),
