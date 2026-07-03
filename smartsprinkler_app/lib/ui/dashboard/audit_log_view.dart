@@ -85,11 +85,12 @@ class _AuditLogViewState extends State<AuditLogView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const SizedBox(height: 16),
           Row(
             children: [
               const Text(
                 '📋 Audit Log',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 22),
               ),
               const SizedBox(width: 8),
               Text(
