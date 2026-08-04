@@ -33,6 +33,7 @@ class AppState:
             "temperature": None,
         }
         self._water_low_alert: bool = False
+        self._last_watered_doses: dict[str, float] = {}
 
 
 state = AppState()
@@ -153,6 +154,15 @@ def create_app(config: dict) -> FastAPI:
         allow_headers=["*"],
     )
     _register_routes(app)
+
+    # Mount the interactive simulation router (optional: silently no-op if
+    # the engine module is missing — e.g. slim production builds).
+    try:
+        from bayesian_sprinkler.simulation_router import create_router
+        app.include_router(create_router())
+    except Exception:  # pragma: no cover
+        logger.exception("Failed to mount simulation router")
+
     return app
 
 
@@ -542,6 +552,43 @@ def _log_and_insert(st: AppState, wx: dict):
 def _inference_cycle(st: AppState):
     try:
         status = st.esp.get_status()
+        _run_inference_with_status(st, status)
+    except Exception:
+        logger.exception("Inference cycle failed")
+        log_event("error", "Inference cycle failed", details="See server logs for traceback")
+
+
+def _watering_allowed(plant_cfg: dict, hour: int) -> bool:
+    """Return True if the plant may be watered at the given hour.
+
+    Allowed hours default to evening/night/morning (cooler), excluding midday.
+    Can be overridden per-plant via `watering_allowed_hours`.
+    """
+    allowed = plant_cfg.get("watering_allowed_hours")
+    if allowed is None:
+        allowed = list(range(0, 11)) + list(range(17, 24))
+    return hour in allowed
+
+
+def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
+    """Run inference using a pre-fetched status dict.
+
+    Shared between the scheduled inference cycle and simulations/tests that
+    supply their own status snapshot (e.g. a mock ESP).
+
+    Returns
+    -------
+    dict[str, float]
+        ``{plant_name: dose_seconds}`` for the plants that were *actually*
+        watered by THIS inference call. Plants skipped due to the hour-window
+        block, ``will_water=False``, or pump-already-on are NOT included.
+        The caller (e.g. ``SimulationEngine._step_locked``) uses this dict
+        to apply the post-watering soil boost — using ``_last_watered_doses``
+        for that is unsafe because it is a persistent dict that survives
+        across calls.
+    """
+    triggered_doses: dict[str, float] = {}
+    try:
         wx = st.weather.fetch()
         pump_on = status["water_pump"] == "on"
 
@@ -566,23 +613,38 @@ def _inference_cycle(st: AppState):
         temp = st.esp.discretize_temperature(raw_temp)
         humid = st.esp.discretize_humidity(raw_humid)
 
+        sim_hour = status.get("_sim_hour")
+        hour_now = int(sim_hour if sim_hour is not None else datetime.now().hour) % 24
+        status["_hour_now"] = hour_now
+
         triggered_plants = []
+        triggered_doses = {}
+        blocked_by_hour = []
+        status["_blocked_by_hour"] = blocked_by_hour
         for plant_name, cfg in st.config["plants"].items():
             sensor_idx = cfg.get("sensor_index", 0)
             raw_sm = status.get(f"soil_moisture_{sensor_idx}")
             plant_sm = float(raw_sm) if raw_sm is not None else float(status["soil_moisture"])
             soil = st.esp.discretize_soil_moisture(plant_sm)
 
+            if not _watering_allowed(cfg, hour_now):
+                logger.info(
+                    "  %s → hour=%02d not in allowed hours, skip (soil=%s)",
+                    cfg["display_name"], hour_now, soil,
+                )
+                blocked_by_hour.append(plant_name)
+                continue
+
             logger.info(
                 "Inference cycle — %s: soil=%s (raw=%s), temp: %s°C, humidity: %s%%  |  "
-                "sky: %s, rain: %s  |  pump: %s",
+                "sky: %s, rain: %s  |  pump: %s  |  hour=%02d",
                 cfg["display_name"], soil, plant_sm, status["air_temperature"],
                 status["air_humidity"], wx["cloud_cover"],
-                wx["rain_forecast"], status["water_pump"],
+                wx["rain_forecast"], status["water_pump"], hour_now,
             )
 
             with st.lock:
-                prob = st.bn.query(
+                prob, dose = st.bn.query_with_dose(
                     plant=plant_name,
                     temperature=temp,
                     humidity=humid,
@@ -591,33 +653,39 @@ def _inference_cycle(st: AppState):
                     rain_forecast=wx["rain_forecast"],
                 )
             threshold = cfg["threshold"]
-            will_water = prob > threshold and not pump_on
+            will_water = dose > 0 and not pump_on
 
             logger.info(
-                "  %s → P=%.2f (thresh=%.2f)%s",
-                cfg["display_name"], prob, threshold,
+                "  %s → P=%.2f (thresh=%.2f) dose=%.2fs%s",
+                cfg["display_name"], prob, threshold, dose,
                 "  ✓ WATERING" if will_water else "",
             )
 
             if will_water and status.get("water_low_alert") != "on":
                 st.esp.start_watering(cfg["esp_target"])
-                time.sleep(cfg["watering_duration"])
+                time.sleep(dose)
                 st.esp.stop_watering(cfg["esp_target"])
+                st._last_watered_doses[plant_name] = dose
+                triggered_doses[plant_name] = dose
                 log_event("command", f"Watering triggered: {cfg['display_name']}",
-                          details=f"target={cfg['esp_target']} duration={cfg['watering_duration']}s prob={prob:.2f} threshold={threshold}")
-                triggered_plants.append(cfg["display_name"])
-            elif will_water:
-                logger.info("  Skipped — water low alert active")
-                log_event("inference", f"Watering skipped (low water): {cfg['display_name']}",
-                          details=f"prob={prob:.2f} threshold={threshold}")
+                          details=f"target={cfg['esp_target']} duration={dose:.2f}s prob={prob:.2f} threshold={threshold} hour={hour_now}")
+                triggered_plants.append(plant_name)
+            else:
+                st._last_watered_doses.pop(plant_name, None)
+                if will_water and status.get("water_low_alert") == "on":
+                    logger.info("  Skipped — water low alert active")
+                    log_event("inference", f"Watering skipped (low water): {cfg['display_name']}",
+                              details=f"prob={prob:.2f} threshold={threshold}")
 
         details = (f"plants={[c['display_name'] for c in st.config['plants'].values()]}; "
                    f"soil_moisture={status['soil_moisture']}; "
                    f"air_temp={status['air_temperature']}; air_humid={status['air_humidity']}; "
                    f"cloud_cover={wx['cloud_cover']}; rain={wx['rain_forecast']}; "
-                   f"watered={triggered_plants}")
+                   f"hour={hour_now}; watered={triggered_plants}; "
+                   f"hour_blocked={blocked_by_hour}")
         log_event("inference", f"Inference cycle completed ({len(triggered_plants)} watered)",
                   details=details)
     except Exception:
         logger.exception("Inference cycle failed")
         log_event("error", "Inference cycle failed", details="See server logs for traceback")
+    return triggered_doses

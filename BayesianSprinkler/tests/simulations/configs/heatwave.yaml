@@ -1,0 +1,35 @@
+# Heatwave: extreme temperatures, very low humidity
+duration_hours: 96
+
+initial_soil_moisture: 55.0
+
+evaporation:
+  base_loss_per_hour: 2.5
+  temperature_factor: 0.12
+  humidity_factor: 0.06
+  cloud_factor: 0.04
+
+rain:
+  probability_per_hour: 0.005
+  amount_when_rains: 25.0
+  min_gap_hours: 24
+
+temperature:
+  min_celsius: 26.0
+  max_celsius: 42.0
+  noise_amplitude: 2.0
+
+humidity:
+  base_percent: 30.0
+  per_degree_drop: 2.5
+  noise_amplitude: 4.0
+
+poll_interval_seconds: 0.02
+
+plants:
+  - habanero
+  - naga_morich
+  - carolina_reaper
+  - rosmarino
+
+random_seed: 99

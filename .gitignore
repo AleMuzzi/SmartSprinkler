@@ -62,6 +62,10 @@ __pycache__/
 venv/
 *.egg
 
+# Simulation reports (regenerated on every test run)
+BayesianSprinkler/tests/simulations/reports/
+BayesianSprinkler/tests/simulations/**/run_*/
+
 # IDE
 .idea/
 .vscode/

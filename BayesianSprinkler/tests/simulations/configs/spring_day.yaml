@@ -1,0 +1,35 @@
+# Spring: mild temperatures, moderate rain
+duration_hours: 96
+
+initial_soil_moisture: 70.0
+
+evaporation:
+  base_loss_per_hour: 0.8
+  temperature_factor: 0.05
+  humidity_factor: 0.03
+  cloud_factor: 0.02
+
+rain:
+  probability_per_hour: 0.20
+  amount_when_rains: 15.0
+  min_gap_hours: 3
+
+temperature:
+  min_celsius: 12.0
+  max_celsius: 24.0
+  noise_amplitude: 1.5
+
+humidity:
+  base_percent: 65.0
+  per_degree_drop: 1.5
+  noise_amplitude: 6.0
+
+poll_interval_seconds: 0.02
+
+plants:
+  - habanero
+  - naga_morich
+  - carolina_reaper
+  - rosmarino
+
+random_seed: 23

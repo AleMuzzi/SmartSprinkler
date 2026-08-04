@@ -1,5 +1,5 @@
 import logging
-
+from datetime import datetime
 import numpy as np
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
@@ -8,6 +8,23 @@ from pgmpy.models import DiscreteBayesianNetwork as BayesianNetwork
 logger = logging.getLogger(__name__)
 
 CHILI_PLANTS = {"habanero", "naga_morich", "carolina_reaper"}
+
+
+def discretize_time_of_day(hour: int) -> str:
+    """Bucket the hour of day into time-of-day states.
+
+    - night:    21:00 - 05:00 (no sun, ideal for watering)
+    - morning:  05:00 - 11:00 (cool, safe)
+    - midday:   11:00 - 17:00 (hot sun, avoid to prevent leaf burn)
+    - evening:  17:00 - 21:00 (cooling down, safe)
+    """
+    if hour < 5 or hour >= 21:
+        return "night"
+    if hour < 11:
+        return "morning"
+    if hour < 17:
+        return "midday"
+    return "evening"
 
 
 class SmartSprinklerBN:
@@ -140,16 +157,52 @@ class SmartSprinklerBN:
         sm_score = {"dry": 1.0, "moist": 0.3, "wet": 0.0}[sm]
 
         score = (
-            cfg["base_need"] * 0.35
-            + evap_score * 0.25
-            + sm_score * 0.40
+            cfg["base_need"] * 0.20
+            + evap_score * 0.30
+            + sm_score * 0.50
         )
 
         if rf == "yes":
             score *= 0.85
 
-        prob = score
-        return float(np.clip(prob, 0.01, 0.99))
+        return float(np.clip(score, 0.01, 0.99))
+
+    def query(self, plant: str, temperature: str, humidity: str,
+              cloud_cover: str, soil_moisture: str, rain_forecast: str) -> float:
+        prob, _ = self.query_with_dose(
+            plant, temperature, humidity, cloud_cover,
+            soil_moisture, rain_forecast,
+        )
+        return prob
+
+    def query_with_dose(self, plant: str, temperature: str, humidity: str,
+                        cloud_cover: str, soil_moisture: str, rain_forecast: str
+                        ) -> tuple[float, float]:
+        """Return (probability_of_watering_need, recommended_dose_seconds)."""
+        evidence = {
+            "AirTemperature": temperature,
+            "AirHumidity": humidity,
+            "CloudCover": cloud_cover,
+            "SoilMoisture": soil_moisture,
+            "PlantType": plant,
+            "RainForecast": rain_forecast,
+        }
+        result = self.inference.query(variables=["NeedWater"], evidence=evidence)
+        prob = float(result.values[result.name_to_no["NeedWater"]["yes"]])
+
+        cfg = self.plant_configs[plant]
+        base_duration = cfg.get("watering_duration", 6)
+        max_duration = cfg.get("watering_duration_max", base_duration * 1.5)
+        min_duration = cfg.get("watering_duration_min", base_duration * 0.5)
+
+        if prob < cfg["threshold"]:
+            dose = 0.0
+        else:
+            excess = (prob - cfg["threshold"]) / max(1e-9, 1.0 - cfg["threshold"])
+            excess = max(0.0, min(1.0, excess))
+            dose = min_duration + (max_duration - min_duration) * excess
+
+        return prob, dose
 
     # ── Inference ────────────────────────────────────────────────────
 

@@ -1,0 +1,35 @@
+# Sunny day: hot, dry, very low rain probability
+duration_hours: 96
+
+initial_soil_moisture: 60.0
+
+evaporation:
+  base_loss_per_hour: 2.0
+  temperature_factor: 0.10
+  humidity_factor: 0.04
+  cloud_factor: 0.04
+
+rain:
+  probability_per_hour: 0.02
+  amount_when_rains: 20.0
+  min_gap_hours: 12
+
+temperature:
+  min_celsius: 22.0
+  max_celsius: 36.0
+  noise_amplitude: 1.5
+
+humidity:
+  base_percent: 45.0
+  per_degree_drop: 2.0
+  noise_amplitude: 5.0
+
+poll_interval_seconds: 0.02
+
+plants:
+  - habanero
+  - naga_morich
+  - carolina_reaper
+  - rosmarino
+
+random_seed: 42

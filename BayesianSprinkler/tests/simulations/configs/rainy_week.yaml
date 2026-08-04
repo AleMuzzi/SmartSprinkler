@@ -1,0 +1,35 @@
+# Rainy week: cool, very wet, frequent rain
+duration_hours: 96
+
+initial_soil_moisture: 80.0
+
+evaporation:
+  base_loss_per_hour: 0.5
+  temperature_factor: 0.04
+  humidity_factor: 0.02
+  cloud_factor: 0.01
+
+rain:
+  probability_per_hour: 0.30
+  amount_when_rains: 18.0
+  min_gap_hours: 2
+
+temperature:
+  min_celsius: 14.0
+  max_celsius: 22.0
+  noise_amplitude: 1.0
+
+humidity:
+  base_percent: 80.0
+  per_degree_drop: 1.0
+  noise_amplitude: 5.0
+
+poll_interval_seconds: 0.02
+
+plants:
+  - habanero
+  - naga_morich
+  - carolina_reaper
+  - rosmarino
+
+random_seed: 17

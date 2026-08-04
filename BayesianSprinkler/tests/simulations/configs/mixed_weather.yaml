@@ -1,0 +1,35 @@
+# Mixed weather: alternating sunny and rainy days
+duration_hours: 120
+
+initial_soil_moisture: 65.0
+
+evaporation:
+  base_loss_per_hour: 1.3
+  temperature_factor: 0.07
+  humidity_factor: 0.03
+  cloud_factor: 0.025
+
+rain:
+  probability_per_hour: 0.15
+  amount_when_rains: 22.0
+  min_gap_hours: 4
+
+temperature:
+  min_celsius: 15.0
+  max_celsius: 28.0
+  noise_amplitude: 2.0
+
+humidity:
+  base_percent: 60.0
+  per_degree_drop: 2.0
+  noise_amplitude: 7.0
+
+poll_interval_seconds: 0.02
+
+plants:
+  - habanero
+  - naga_morich
+  - carolina_reaper
+  - rosmarino
+
+random_seed: 7
