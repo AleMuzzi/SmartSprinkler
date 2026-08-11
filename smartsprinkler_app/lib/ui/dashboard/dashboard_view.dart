@@ -24,6 +24,7 @@ class DashboardView extends StatelessWidget {
             Divider(height: 1, color: Color(0xFFE0E4E8)),
             Expanded(child: _PlantCarousel()),
             Divider(height: 1, color: Color(0xFFE0E4E8)),
+            _CisternSection(),
             _WeatherFooter(),
           ],
         ),
@@ -244,6 +245,151 @@ class _ConnectionDot extends StatelessWidget {
   }
 }
 
+
+class _CisternSection extends StatelessWidget {
+  const _CisternSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final dataReceived = Sprinkler().cisternDataReceived;
+    final level = Sprinkler().cisternLevelMl;
+    final capacity = Sprinkler().cisternCapacityMl;
+    final pct = Sprinkler().cisternLevelPct;
+    final lowAlert = Sprinkler().waterLowAlert;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: lowAlert ? const Color(0xFFF44336) : const Color(0xFFE8EDF2),
+            width: lowAlert ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('💧', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 8),
+                const Text(
+                  'Cisterna',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D3748),
+                  ),
+                ),
+                const Spacer(),
+                if (lowAlert)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF44336),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      '⚠️ LOW',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (!dataReceived) ...[
+              // No real data yet — server offline or never replied.
+              const Text(
+                '— no data —',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF718096),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'In attesa della prima risposta dal server',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFFA0AEC0),
+                ),
+              ),
+            ] else ...[
+              Builder(builder: (_) {
+                final litres = (level / 1000).toStringAsFixed(1);
+                final capacityL = (capacity / 1000).toStringAsFixed(0);
+                final pctClamped = pct.clamp(0.0, 100.0);
+
+                Color barColor;
+                if (pctClamped < 15.0) {
+                  barColor = const Color(0xFFF44336);
+                } else if (pctClamped < 35.0) {
+                  barColor = const Color(0xFFFF9800);
+                } else {
+                  barColor = const Color(0xFF4CAF50);
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '$litres L',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2D3748),
+                          ),
+                        ),
+                        Text(
+                          ' / $capacityL L',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF718096),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${pctClamped.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: barColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: pctClamped / 100.0,
+                        minHeight: 10,
+                        backgroundColor: const Color(0xFFE8EDF2),
+                        valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
 class _PlantCarousel extends StatelessWidget {
   const _PlantCarousel();
 
@@ -312,7 +458,6 @@ class _PlantCard extends StatelessWidget {
         );
       },
       child: Container(
-        height: 340,
         margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -330,7 +475,7 @@ class _PlantCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              height: 160,
+              height: 130,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: plant.imageUrl.isNotEmpty
@@ -339,17 +484,17 @@ class _PlantCard extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
                           color: const Color(0xFFE8EDF2),
-                          child: const Icon(Icons.eco, size: 48, color: Color(0xFFA0AEC0)),
+                          child: const Icon(Icons.eco, size: 40, color: Color(0xFFA0AEC0)),
                         ),
                       )
                     : Container(
                         color: const Color(0xFFE8EDF2),
-                        child: const Icon(Icons.eco, size: 48, color: Color(0xFFA0AEC0)),
+                        child: const Icon(Icons.eco, size: 40, color: Color(0xFFA0AEC0)),
                       ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -407,7 +552,7 @@ class _PlantCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -416,11 +561,11 @@ class _PlantCard extends StatelessWidget {
                         backgroundColor: const Color(0xFF4CAF50),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
                       ),
-                      child: const Text('Water Now', style: TextStyle(fontWeight: FontWeight.w600)),
+                      child: const Text('Water Now', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],

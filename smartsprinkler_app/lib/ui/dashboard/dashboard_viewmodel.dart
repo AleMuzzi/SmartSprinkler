@@ -18,6 +18,7 @@ class DashboardViewModel extends ChangeNotifier {
 
   Timer? _espTimer;
   Timer? _bayesianTimer;
+  Timer? _cisternTimer;
   bool _disposed = false;
   List<PlantData> _plants = [];
   List<BayesianPlantStatus> _plantStatuses = [];
@@ -71,10 +72,12 @@ class DashboardViewModel extends ChangeNotifier {
     _fetchEspStatus();
     _fetchBayesianStatus();
     _fetchWeatherStatus();
+    _fetchCisternStatus();
 
     _espTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspStatus());
     _bayesianTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchBayesianStatus());
     Timer.periodic(const Duration(seconds: 30), (_) => _fetchWeatherStatus());
+    _cisternTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchCisternStatus());
   }
 
   @override
@@ -82,6 +85,7 @@ class DashboardViewModel extends ChangeNotifier {
     _disposed = true;
     _espTimer?.cancel();
     _bayesianTimer?.cancel();
+    _cisternTimer?.cancel();
     super.dispose();
   }
 
@@ -204,6 +208,25 @@ class DashboardViewModel extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> _fetchCisternStatus() async {
+    debugPrint('[_fetchCisternStatus] URL: ${settings.bayesianUrl}/api/cistern');
+    try {
+      final response = await http.get(
+        Uri.parse('${settings.bayesianUrl}/api/cistern'),
+      ).timeout(const Duration(seconds: 5));
+
+      debugPrint('[_fetchCisternStatus] status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        sprinkler.updateCisternWithJson(json);
+      }
+    } catch (e) {
+      log('Cistern status fetch error: $e');
+    }
+    _notify();
+  }
+
   Future<void> _fetchWeatherStatus() async {
     debugPrint('[_fetchWeatherStatus] URL: ${settings.bayesianUrl}/api/weather/status');
     try {
@@ -218,6 +241,10 @@ class DashboardViewModel extends ChangeNotifier {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         _weather = WeatherData.fromJson(json);
         debugPrint('[_fetchWeatherStatus] weather: temp=${_weather?.temperature}, humidity=${_weather?.humidity}');
+        // Sync the same reading into the singleton Sprinkler so widgets
+        // that read airHumidity/airTemperature (e.g. SprinklerDataComponent)
+        // show the server-side value rather than the raw ESP payload.
+        sprinkler.updateWeatherFromServer(json);
         _notify();
       }
     } catch (e) {

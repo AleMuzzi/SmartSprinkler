@@ -63,6 +63,122 @@ function PlantCard({ plant, soil, justWatered, doseMl, flowRateMlPerMin }) {
 }
 
 
+// ── Cistern card ──────────────────────────────────────────────────────────
+
+
+export function CisternCard({ levelMl, capacityMl, lowAlert, onRefill }) {
+  const hasData = levelMl !== null && capacityMl
+  const pct = hasData ? Math.max(0, Math.min(100, (levelMl / capacityMl) * 100)) : null
+  const litres = hasData ? (levelMl / 1000).toFixed(1) : '--'
+  const capacityL = hasData ? (capacityMl / 1000).toFixed(0) : '--'
+
+  let colour = 'from-blue-400 to-blue-600'
+  let label = 'OK'
+  if (pct !== null) {
+    if (pct < 15) { colour = 'from-red-400 to-red-600'; label = 'LOW' }
+    else if (pct < 35) { colour = 'from-orange-400 to-orange-500'; label = 'refill soon' }
+  }
+
+  return (
+    <div className={`relative bg-white rounded-2xl shadow-sm border p-4 transition-all ${
+      lowAlert ? 'ring-2 ring-red-400 border-red-300' : 'border-gray-200'
+    }`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">💧</span>
+          <h3 className="font-semibold text-gray-800">Cisterna</h3>
+          {lowAlert && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 animate-pulse">
+              ⚠️ LOW
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            {litres} / {capacityL} L
+          </span>
+          {onRefill && (
+            <button
+              onClick={onRefill}
+              disabled={!hasData}
+              className="px-3 py-1 text-xs font-medium bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300"
+            >
+              ⟳ refill
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="h-6 bg-gray-100 rounded-full overflow-hidden relative">
+        {pct !== null && (
+          <div
+            className={`absolute bottom-0 left-0 top-0 bg-gradient-to-r ${colour} transition-all duration-500 ease-out`}
+            style={{ width: `${pct}%` }}
+          />
+        )}
+        <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-800 mix-blend-overlay">
+          {pct !== null ? `${pct.toFixed(0)}%` : 'no data'}
+        </div>
+      </div>
+
+      <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+        <span>0 L</span>
+        <span className="font-medium">{label}</span>
+        <span>{capacityL} L</span>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Compact cistern widget for the header (always visible) ────────────────
+
+
+export function CisternWidget({ levelMl, capacityMl, lowAlert, onRefill, onExpand }) {
+  const hasData = levelMl !== null && capacityMl
+  const pct = hasData ? Math.max(0, Math.min(100, (levelMl / capacityMl) * 100)) : null
+  const litres = hasData ? (levelMl / 1000).toFixed(1) : '--'
+
+  let barColor = 'bg-blue-500'
+  let badge = null
+  if (pct !== null) {
+    if (pct < 15) { barColor = 'bg-red-500'; badge = <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 animate-pulse">LOW</span> }
+    else if (pct < 35) { barColor = 'bg-orange-500' }
+  }
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+      lowAlert ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+    }`}
+    onClick={onExpand}
+    title="Cisterna: click per refill"
+    >
+      <span className="text-lg">💧</span>
+      <div className="flex flex-col">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-semibold text-gray-700">{litres} L</span>
+          {badge}
+        </div>
+        <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5">
+          {pct !== null && (
+            <div className={`${barColor} h-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+          )}
+        </div>
+      </div>
+      {onRefill && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRefill() }}
+          className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded hover:bg-blue-50 hover:border-blue-400 text-gray-600"
+          title="Refill cistern"
+        >
+          ⟳
+        </button>
+      )}
+    </div>
+  )
+}
+
+
 // ── Weather strip ────────────────────────────────────────────────────────
 
 
@@ -566,10 +682,16 @@ function useSimulation(baseUrl) {
     })
   }
 
+  const refillCistern = async () => {
+    await fetch(`${baseUrl}/api/simulation/refill-cistern`, {
+      method: 'POST',
+    })
+  }
+
   return {
     configs, currentConfig, state, speed, overrides, events, recentWatered,
     start, playPause, reset, stop, step, changeSpeed,
-    setTempOffset, setBaseLoss, setRainProb, triggerRain,
+    setTempOffset, setBaseLoss, setRainProb, triggerRain, refillCistern,
     refreshState,
   }
 }
@@ -609,6 +731,13 @@ export function SimulationView() {
         temperature={sim.state.temperature}
         humidity={sim.state.humidity}
         rainEvent={sim.events.length > 0 && sim.events[sim.events.length - 1].rain_event}
+      />
+
+      <CisternCard
+        levelMl={sim.events[sim.events.length - 1]?.cistern_level_ml ?? null}
+        capacityMl={sim.events[sim.events.length - 1]?.cistern_capacity_ml ?? null}
+        lowAlert={Boolean(sim.events[sim.events.length - 1]?.cistern_water_low_alert)}
+        onRefill={sim.refillCistern}
       />
 
       {!sim.state.loaded && (

@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { useEspData, usePlantStatuses } from './hooks/usePolling.js'
+import { useEspData, usePlantStatuses, useCisternStatus } from './hooks/usePolling.js'
 import { TelemetryPanel } from './components/TelemetryPanel.jsx'
 import { BayesianInsights } from './components/BayesianInsights.jsx'
 import { ControlPanel } from './components/ControlPanel.jsx'
@@ -8,6 +8,8 @@ import { CameraPanel } from './components/CameraPanel.jsx'
 import { AuditLog } from './components/AuditLog.jsx'
 import { HealthBar } from './components/StatusBadge.jsx'
 import { SimulationView } from './components/SimulationView.jsx'
+import { CisternCard, CisternWidget } from './components/SimulationView.jsx'
+import { getSettings } from './services/api.js'
 
 function Toast({ message, type }) {
   const bg = type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-600' : 'bg-gray-700'
@@ -23,22 +25,41 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const { espData, espHealthy, waterLowAlert, error, loading } = useEspData()
   const { plantStatuses } = usePlantStatuses()
+  const { cistern, refill: refillCistern, refetch: refetchCistern } = useCisternStatus(getSettings().bayesianUrl)
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ message: msg, type })
     setTimeout(() => setToast(null), 3000)
   }, [])
 
+  const handleCisternRefill = useCallback(async () => {
+    try {
+      await refillCistern()
+      showToast('Cisterna riempita', 'success')
+    } catch (e) {
+      showToast(`Refill fallito: ${e.message}`, 'error')
+    }
+  }, [refillCistern, showToast])
+
   return (
     <div className="min-h-screen bg-smart-light">
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🌿</span>
             <h1 className="text-xl font-bold text-gray-800">SmartSprinkler</h1>
           </div>
-          <HealthBar espOnline={espHealthy} bayesianOnline={!error} waterLowAlert={waterLowAlert} />
+          <div className="flex items-center gap-3">
+            <CisternWidget
+              levelMl={cistern.levelMl}
+              capacityMl={cistern.capacityMl}
+              lowAlert={cistern.waterLowAlert}
+              onRefill={handleCisternRefill}
+              onExpand={() => setActiveTab('dashboard')}
+            />
+            <HealthBar espOnline={espHealthy} bayesianOnline={!error} waterLowAlert={waterLowAlert} />
+          </div>
         </div>
         {/* Nav tabs */}
         <div className="max-w-6xl mx-auto px-4 flex gap-1">
@@ -74,6 +95,14 @@ export default function App() {
             ) : (
               <TelemetryPanel espData={espData} />
             )}
+
+            {/* Cistern — production status, always shown outside the simulator */}
+            <CisternCard
+              levelMl={cistern.levelMl}
+              capacityMl={cistern.capacityMl}
+              lowAlert={cistern.waterLowAlert}
+              onRefill={handleCisternRefill}
+            />
 
             {/* Bayesian insights */}
             {error ? null : (

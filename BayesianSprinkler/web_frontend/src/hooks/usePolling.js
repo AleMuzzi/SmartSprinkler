@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchEspStatus, fetchEspHealth, fetchBayesianPlantStatus } from '../services/api.js'
+import { fetchEspStatus, fetchEspHealth, fetchBayesianPlantStatus, fetchCistern, refillCistern } from '../services/api.js'
 
 export function useEspData() {
   const [espData, setEspData] = useState(null)
@@ -62,4 +62,40 @@ export function usePlantStatuses() {
   }, [fetch])
 
   return { plantStatuses, error, loading, refetch: fetch }
+}
+
+export function useCisternStatus(baseUrl, intervalMs = 30000) {
+  const [cistern, setCistern] = useState({
+    levelMl: null,
+    capacityMl: null,
+    levelPct: null,
+    waterLowAlert: false,
+  })
+
+  const fetch = useCallback(async () => {
+    try {
+      const data = await fetchCistern(baseUrl)
+      setCistern({
+        levelMl: data.level_ml,
+        capacityMl: data.capacity_ml,
+        levelPct: data.level_pct,
+        waterLowAlert: data.water_low_alert,
+      })
+    } catch (e) {
+      // swallow; UI just keeps last known state
+    }
+  }, [baseUrl])
+
+  useEffect(() => {
+    fetch()
+    const interval = setInterval(fetch, intervalMs)
+    return () => clearInterval(interval)
+  }, [fetch, intervalMs])
+
+  const refill = useCallback(async () => {
+    await refillCistern(baseUrl)
+    await fetch()
+  }, [baseUrl, fetch])
+
+  return { cistern, refill, refetch: fetch }
 }

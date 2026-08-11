@@ -33,6 +33,7 @@ class AppState:
             "temperature": None,
         }
         self._water_low_alert: bool = False
+        self._cistern_level_ml: float = 30000.0  # default; reset by create_app from config
         self._last_watered_doses: dict[str, float] = {}
 
 
@@ -140,6 +141,9 @@ def create_app(config: dict) -> FastAPI:
         longitude=config["weather"]["longitude"],
         cloud_threshold=config["weather"]["cloud_cover_threshold"],
     )
+    # Cistern starts full. The state survives across inference cycles; the
+    # simulation engine keeps its own copy.
+    state._cistern_level_ml = float(config.get("cistern_capacity_ml", 30000))
     app = FastAPI(lifespan=lifespan, title="BayesianSprinkler")
     app.add_middleware(
         CORSMiddleware,
@@ -149,6 +153,18 @@ def create_app(config: dict) -> FastAPI:
             "http://localhost:5173",
             "http://127.0.0.1:5173",
         ],
+        # Also accept any RFC1918 private-network host so the web UI works
+        # from phones / tablets on the LAN without editing this list every
+        # time the router hands out a new IP. Public origins still need to
+        # be added to ``allow_origins`` explicitly.
+        allow_origin_regex=(
+            r"^http://("
+            r"localhost|127\.0\.0\.1"
+            r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+            r"|192\.168\.\d{1,3}\.\d{1,3}"
+            r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+            r")(:\d+)?$"
+        ),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -190,6 +206,54 @@ def _poll_weather(st: AppState):
 
 
 def _register_routes(app: FastAPI):
+    @app.get(
+        "/api/cistern",
+        tags=["Cistern"],
+        summary="Current cistern level estimate",
+    )
+    def cistern_status() -> dict:
+        capacity = float(state.config.get("cistern_capacity_ml", 30000))
+        level = float(state._cistern_level_ml)
+        pct = (level / capacity * 100.0) if capacity > 0 else 0.0
+        return {
+            "level_ml": level,
+            "capacity_ml": capacity,
+            "level_pct": round(pct, 1),
+            "water_low_alert": state._water_low_alert,
+        }
+
+    @app.post(
+        "/api/cistern/refill",
+        tags=["Cistern"],
+        summary=(
+            "Force the cistern estimate back to full. Mirrors what happens "
+            "automatically when the water_low_alert sensor transitions from "
+            "on → off. Useful for ops/testing without physically refilling."
+        ),
+    )
+    def cistern_refill() -> dict:
+        capacity = float(state.config.get("cistern_capacity_ml", 30000))
+        previous_level = float(state._cistern_level_ml)
+        state._cistern_level_ml = capacity
+        # Also clear the alert since the cistern is now full.
+        state._water_low_alert = False
+        logger.info(
+            "Cistern manually refilled: %.0f mL → %.0f mL", previous_level, capacity
+        )
+        log_event(
+            "alert",
+            "Cistern manually refilled",
+            details=(
+                f"previous_level={previous_level:.0f}mL "
+                f"new_level={capacity:.0f}mL (manual override via API)"
+            ),
+        )
+        return {
+            "level_ml": state._cistern_level_ml,
+            "capacity_ml": capacity,
+            "refilled_from_ml": previous_level,
+        }
+
     @app.post(
         "/api/plants/manual-water",
         tags=["Plants"],
@@ -612,14 +676,46 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
 
         water_low = status.get("water_low_alert") == "on"
         if water_low and not st._water_low_alert:
+            # Off → On: low-alert just triggered. Email the user and log it.
             logger.warning("WATER LOW ALERT DETECTED!")
+            cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
             send_email_alert(
                 st.config,
                 subject="SmartSprinkler: Water Tank Low!",
-                body="The water tank is running low. Please refill the cistern.",
+                body=(
+                    "The water tank is running low. Please refill the cistern. "
+                    f"Estimated remaining: {st._cistern_level_ml:.0f} mL "
+                    f"of {cistern_capacity:.0f} mL capacity."
+                ),
             )
-            log_event("alert", "Water tank low alert triggered",
-                      details=f"ESP status: water_low_alert=on")
+            log_event(
+                "alert",
+                "Water tank low alert triggered",
+                details=(
+                    f"ESP status: water_low_alert=on, "
+                    f"estimated_level={st._cistern_level_ml:.0f}mL, "
+                    f"capacity={cistern_capacity:.0f}mL"
+                ),
+            )
+        elif not water_low and st._water_low_alert:
+            # On → Off: cistern has been refilled. We assume it's filled to
+            # full capacity (no partial refills — the user said so).
+            cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
+            previous_level = st._cistern_level_ml
+            st._cistern_level_ml = cistern_capacity
+            logger.info(
+                "Water tank refilled: %.0f mL → %.0f mL",
+                previous_level, cistern_capacity,
+            )
+            log_event(
+                "alert",
+                "Water tank refilled",
+                details=(
+                    f"ESP status: water_low_alert=off, "
+                    f"previous_level={previous_level:.0f}mL, "
+                    f"new_level={cistern_capacity:.0f}mL"
+                ),
+            )
         st._water_low_alert = water_low
 
         raw_temp = float(status["air_temperature"])
@@ -709,8 +805,26 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                 st.esp.stop_watering(cfg["esp_target"])
                 st._last_watered_doses[plant_name] = dose_ml
                 triggered_doses[plant_name] = dose_ml
-                log_event("command", f"Watering triggered: {cfg['display_name']}",
-                          details=f"target={cfg['esp_target']} dose={dose_ml:.0f}mL ({dose_seconds:.2f}s) prob={prob:.2f} threshold={threshold} hour={hour_now}")
+                # Track cistern water usage. Cap at 0 — the sensor (water_low_alert)
+                # is the source of truth for "tank is empty"; we just keep the
+                # estimate conservative.
+                previous_level = st._cistern_level_ml
+                st._cistern_level_ml = max(0.0, previous_level - dose_ml)
+                cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
+                if st._cistern_level_ml != previous_level:
+                    logger.debug(
+                        "Cistern: %.0f → %.0f mL (−%.0f mL for %s)",
+                        previous_level, st._cistern_level_ml, dose_ml, cfg["display_name"],
+                    )
+                log_event(
+                    "command",
+                    f"Watering triggered: {cfg['display_name']}",
+                    details=(
+                        f"target={cfg['esp_target']} dose={dose_ml:.0f}mL ({dose_seconds:.2f}s) "
+                        f"prob={prob:.2f} threshold={threshold} hour={hour_now} "
+                        f"cistern={st._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
+                    ),
+                )
                 triggered_plants.append(plant_name)
             else:
                 st._last_watered_doses.pop(plant_name, None)

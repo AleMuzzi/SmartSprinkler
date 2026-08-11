@@ -27,7 +27,12 @@ thresholds:
 # Pump flow rate. The Bayesian server computes a watering duration in
 # seconds; the effective volume in mL is ``dose_s * flow_rate / 60``.
 flow_rate_ml_per_min: 1380
-watering_allowed_hours: [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 18, 19, 20, 21, 22, 23]
+# Cistern capacity in mL. The system tracks water usage by subtracting
+# every delivered dose from this value, and resets to full when the
+# water_low_alert sensor transitions from on → off (i.e. the user
+# refills the tank).
+cistern_capacity_ml: 30000
+watering_allowed_hours: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 18, 19, 20, 21, 22, 23]
 plants:
   habanero:
     display_name: Habanero

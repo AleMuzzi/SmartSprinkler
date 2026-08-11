@@ -19,6 +19,22 @@ export function getSettings() {
   return loadSettings()
 }
 
+export async function fetchCistern(baseUrl) {
+  const url = baseUrl || getSettings().bayesianUrl
+  const res = await fetchWithTimeout(`${url}/api/cistern`)
+  if (!res.ok) throw new Error(`cistern fetch failed: ${res.status}`)
+  return res.json()
+}
+
+export async function refillCistern(baseUrl) {
+  const url = baseUrl || getSettings().bayesianUrl
+  const res = await fetchWithTimeout(`${url}/api/cistern/refill`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`cistern refill failed: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchEspStatus() {
   const { espUrl } = getSettings()
   const res = await fetchWithTimeout(`${espUrl}/status`)

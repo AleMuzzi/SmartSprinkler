@@ -184,6 +184,12 @@ class _SimulationSession:
         self.engine.trigger_manual_rain(amount_percent)
         return {"ok": True, "queued": True}
 
+    def refill_cistern(self) -> dict:
+        if not self.engine:
+            raise HTTPException(400, "No simulation loaded")
+        self.engine.refill_cistern()
+        return {"ok": True}
+
     # ── streaming ───────────────────────────────────────────────────
 
     def _publish(self, payload: dict) -> None:
@@ -323,6 +329,11 @@ def create_router() -> APIRouter:
     @router.post("/trigger-rain", summary="Force a rain event on the next step")
     def trigger_rain(req: TriggerRainRequest) -> dict:
         return session.trigger_rain(req.amount_percent)
+
+    @router.post("/refill-cistern", summary="Top the cistern back to full capacity")
+    def refill_cistern() -> dict:
+        session.refill_cistern()
+        return {"ok": True, "refilled": True}
 
     @router.get("/events/stream", summary="SSE stream of SimGUIEvent JSON")
     async def stream():

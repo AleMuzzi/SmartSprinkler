@@ -105,6 +105,15 @@ class MockESPState:
         self.last_commands: list[dict] = []
         self.last_doses: dict[str, float] = {}  # new: per-plant dose of last water
         self.transcript: list[dict] = []       # new: lightweight event log
+        # Cistern state. ``cistern_level_ml`` is decremented on each
+        # watering. When it drops below ~10 % of capacity the engine flips
+        # ``water_low_alert`` to "on" so the inference skips watering until
+        # the user resets the alert (which the engine interprets as a full
+        # refill).
+        self.cistern_level_ml: float = 30000.0
+        self._prev_water_low_alert: bool = False
+        self.cistern_refill_count: int = 0
+        self.cistern_low_count: int = 0
 
 
 def reset_esp_state(state: MockESPState, plant_ids: list[str], initial_soil: float) -> None:
@@ -119,6 +128,10 @@ def reset_esp_state(state: MockESPState, plant_ids: list[str], initial_soil: flo
     state.last_commands = []
     state.last_doses = {}
     state.transcript = []
+    state.cistern_level_ml = float(state.cistern_level_ml) or 30000.0
+    state._prev_water_low_alert = False
+    state.cistern_refill_count = 0
+    state.cistern_low_count = 0
 
 
 class _MockESPHandler(BaseHTTPRequestHandler):
@@ -285,6 +298,9 @@ class SimGUIEvent:
     hour_blocked: list[str] = field(default_factory=list)
     inference_notes: list[str] = field(default_factory=list)
     flow_rate_ml_per_min: float | None = None
+    cistern_level_ml: float | None = None
+    cistern_capacity_ml: float | None = None
+    cistern_water_low_alert: bool = False
 
     def to_public(self) -> dict:
         flow_rate = self.flow_rate_ml_per_min
@@ -305,6 +321,9 @@ class SimGUIEvent:
             "triggered": {p: round(d, 1) for p, d in self.triggered.items()},  # mL
             "dose_seconds_by_plant": dose_seconds_by_plant,
             "flow_rate_ml_per_min": self.flow_rate_ml_per_min,
+            "cistern_level_ml": self.cistern_level_ml,
+            "cistern_capacity_ml": self.cistern_capacity_ml,
+            "cistern_water_low_alert": self.cistern_water_low_alert,
             "hour_blocked": list(self.hour_blocked),
             "notes": list(self.inference_notes),
         }
@@ -407,6 +426,23 @@ class SimulationEngine:
         # We mark a "force_rain" flag that the next step() consumes.
         self._force_rain_next = True
         self._force_rain_amount = amount_percent
+
+    def refill_cistern(self) -> None:
+        """Top the cistern back up to full capacity.
+
+        Mirrors what happens in production when the water_low_alert sensor
+        transitions from on → off (the user refilled the tank). Marks the
+        ``_prev_water_low_alert`` so the next step records the refill event.
+        """
+        with self._lock:
+            capacity = float(self.cfg.get("__capacity_ml__", 30000.0))
+            self.state.cistern_level_ml = capacity
+            self.state.water_low_alert = "off"
+            self.state._prev_water_low_alert = True  # so step records refill
+            self.state.transcript.append({
+                "type": "cistern_refill_request",
+                "hour": self.hour,
+            })
 
     # ── state snapshot ────────────────────────────────────────────
 
@@ -556,9 +592,48 @@ class SimulationEngine:
         hour_blocked = list(status.get("_blocked_by_hour", []))
 
         # Apply post-inference watering effects to soil (+ boost per dose)
+        cistern_capacity_ml = float(api_state.config.get("cistern_capacity_ml", 30000.0))
+        cistern_low_threshold_ml = cistern_capacity_ml * 0.10  # 10 % of capacity
         for plant_name, dose_ml in triggered.items():
             pot_capacity_ml = float(cfg["plants_cfg"].get(plant_name, {}).get("pot_capacity_ml", 500.0))
             apply_watering_effect(self.state, plant_name, dose_ml, pot_capacity_ml)
+            # Track cistern water usage (cap at 0).
+            self.state.cistern_level_ml = max(
+                0.0, self.state.cistern_level_ml - dose_ml
+            )
+
+        # Update the water_low_alert sensor based on cistern level. When the
+        # level drops below the low threshold, raise the alert; when it
+        # rises back above it (the user refilled), reset the alert and top
+        # the cistern off to full capacity (the user said refills are
+        # always complete).
+        was_low = bool(self.state._prev_water_low_alert)
+        if self.state.cistern_level_ml <= cistern_low_threshold_ml:
+            self.state.water_low_alert = "on"
+        else:
+            self.state.water_low_alert = "off"
+
+        is_low = self.state.water_low_alert == "on"
+        if is_low and not was_low:
+            self.state.cistern_low_count += 1
+            self.state.transcript.append({
+                "type": "cistern_low",
+                "hour": h,
+                "level_ml": self.state.cistern_level_ml,
+                "capacity_ml": cistern_capacity_ml,
+            })
+        elif not is_low and was_low:
+            previous_level = self.state.cistern_level_ml
+            self.state.cistern_level_ml = cistern_capacity_ml
+            self.state.cistern_refill_count += 1
+            self.state.transcript.append({
+                "type": "cistern_refill",
+                "hour": h,
+                "previous_level_ml": previous_level,
+                "new_level_ml": cistern_capacity_ml,
+                "capacity_ml": cistern_capacity_ml,
+            })
+        self.state._prev_water_low_alert = is_low
 
         # 6. Increment hour
         self.hour += 1
@@ -576,6 +651,9 @@ class SimulationEngine:
             hour_blocked=hour_blocked,
             inference_notes=[],
             flow_rate_ml_per_min=api_state.config.get("flow_rate_ml_per_min"),
+            cistern_level_ml=self.state.cistern_level_ml,
+            cistern_capacity_ml=api_state.config.get("cistern_capacity_ml", 30000.0),
+            cistern_water_low_alert=self.state.water_low_alert == "on",
         )
 
 
