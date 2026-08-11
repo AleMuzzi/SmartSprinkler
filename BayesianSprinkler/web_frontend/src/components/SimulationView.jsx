@@ -5,12 +5,15 @@ const BAYESIAN_API = (import.meta.env.VITE_BAYESIAN_API || 'http://localhost:808
 // ── Plant soil card ──────────────────────────────────────────────────────
 
 
-function PlantCard({ plant, soil, justWatered, dose }) {
+function PlantCard({ plant, soil, justWatered, doseMl, flowRateMlPerMin }) {
   const pct = Math.max(0, Math.min(100, soil))
   const colour =
     pct < 35 ? 'from-red-400 to-red-600'
     : pct < 65 ? 'from-yellow-300 to-yellow-500'
     : 'from-emerald-400 to-emerald-600'
+  const doseSeconds = flowRateMlPerMin && doseMl
+    ? (doseMl * 60 / flowRateMlPerMin).toFixed(1)
+    : null
 
   const label =
     pct < 35 ? 'dry' : pct < 65 ? 'moist' : 'wet'
@@ -50,7 +53,9 @@ function PlantCard({ plant, soil, justWatered, dose }) {
 
       {justWatered && (
         <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
-          💧 {dose ? `${dose.toFixed(1)}s` : 'watering'}
+          💧 {doseMl !== undefined
+            ? `${doseMl.toFixed(0)}mL${doseSeconds ? ` · ${doseSeconds}s` : ''}`
+            : 'watering'}
         </div>
       )}
     </div>
@@ -347,10 +352,11 @@ function EventLog({ events, plantIds }) {
               <div className="mt-1 ml-16 flex flex-wrap gap-x-4 gap-y-1">
                 {columns.map((pid) => {
                   const soilPct = soil[pid]
-                  const dose = triggered[pid]
+                  const doseMl = triggered[pid]
+                  const doseS = e.dose_seconds_by_plant?.[pid]
                   const isBlocked = blocked.includes(pid)
                   let cls = 'text-gray-400'
-                  if (dose !== undefined) cls = 'text-emerald-300'
+                  if (doseMl !== undefined) cls = 'text-emerald-300'
                   else if (isBlocked) cls = 'text-yellow-300 line-through'
                   else if (soilPct !== undefined) cls = 'text-gray-300'
                   return (
@@ -359,10 +365,15 @@ function EventLog({ events, plantIds }) {
                       {soilPct !== undefined ? (
                         <span>{soilPct.toFixed(0)}%</span>
                       ) : '—'}
-                      {dose !== undefined && (
-                        <span className="text-emerald-400"> +{dose.toFixed(1)}s</span>
+                      {doseMl !== undefined && (
+                        <span className="text-emerald-400">
+                          {' '}+{doseMl.toFixed(0)}mL
+                          {doseS !== undefined && (
+                            <span className="text-cyan-300/80"> ({doseS.toFixed(1)}s)</span>
+                          )}
+                        </span>
                       )}
-                      {isBlocked && dose === undefined && (
+                      {isBlocked && doseMl === undefined && (
                         <span className="text-yellow-400/70"> ⏸</span>
                       )}
                     </span>
@@ -613,7 +624,8 @@ export function SimulationView() {
             plant={p.id}
             soil={p.soil}
             justWatered={Boolean(sim.recentWatered[p.id])}
-            dose={sim.recentWatered[p.id]}
+            doseMl={sim.recentWatered[p.id]}
+            flowRateMlPerMin={sim.events[sim.events.length - 1]?.flow_rate_ml_per_min ?? null}
           />
         ))}
       </div>

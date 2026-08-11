@@ -9,6 +9,29 @@ logger = logging.getLogger(__name__)
 
 CHILI_PLANTS = {"habanero", "naga_morich", "carolina_reaper"}
 
+# Soil-moisture boost applied per 6 s of watering (matches the simulation
+# engine in tests/simulations/engine.py). Keeping the value in one place
+# would be cleaner but engine.py lives under tests/, so we duplicate and
+# assert in tests that they stay aligned.
+_WATERING_BOOST_PERCENT = 30.0
+
+# Hot-hour block during which watering is forbidden (matches the default in
+# api._watering_allowed / config.yaml). Used to decide whether we need a
+# proactive boost on the watering window right before the block.
+HOT_HOUR_START = 11
+HOT_HOUR_END = 18
+HOT_BLOCK_HOURS = HOT_HOUR_END - HOT_HOUR_START
+
+# How many hours before ``HOT_HOUR_START`` we start pre-loading water.
+# 2 hours is wide enough to catch h=10 and h=9, but tight enough that we
+# don't over-water on cool mornings.
+LOOKAHEAD_HOURS = 2
+
+# Extra soil-moisture buffer (%) added to the deficit when we're in the
+# pre-hot window. Designed to cover typical evaporation across the 6 h
+# hot block (~4-5 %/h average) with a small safety margin.
+PROACTIVE_EVAP_BUFFER = 25.0
+
 
 def discretize_time_of_day(hour: int) -> str:
     """Bucket the hour of day into time-of-day states.
@@ -20,9 +43,9 @@ def discretize_time_of_day(hour: int) -> str:
     """
     if hour < 5 or hour >= 21:
         return "night"
-    if hour < 11:
+    if hour < HOT_HOUR_START:
         return "morning"
-    if hour < 17:
+    if hour < HOT_HOUR_END:
         return "midday"
     return "evening"
 
@@ -176,9 +199,34 @@ class SmartSprinklerBN:
         return prob
 
     def query_with_dose(self, plant: str, temperature: str, humidity: str,
-                        cloud_cover: str, soil_moisture: str, rain_forecast: str
+                        cloud_cover: str, soil_moisture: str, rain_forecast: str,
+                        soil_value: float | None = None,
+                        sim_hour: int | None = None,
                         ) -> tuple[float, float]:
-        """Return (probability_of_watering_need, recommended_dose_seconds)."""
+        """Return (probability_of_watering_need, recommended_dose_seconds).
+
+        Dose calibration
+        ----------------
+        When ``soil_value`` is provided (numeric moisture %, 0-100), the dose
+        is calibrated to bring the soil back to ``target_soil_moisture`` for
+        the plant — instead of a fixed ``prob - threshold`` mapping. This
+        prevents over-watering in cool/wet weather where ``NeedWater=yes``
+        would otherwise trigger a max-duration pulse even though the soil is
+        already near the target.
+
+        Behaviour:
+        - ``prob < threshold``                        → dose = 0
+        - ``soil_value ≥ target``                     → dose = 0 (no need)
+        - ``soil_value < target - 5``                 → dose fills the deficit,
+          clamped to ``[min_duration, max_duration]``; otherwise → dose = 0
+        - **Proactive boost**: when ``sim_hour`` is provided and we are
+          within ``LOOKAHEAD_HOURS`` of the hot-hour block (the window in
+          which ``_watering_allowed`` will reject further watering), an
+          extra ``PROACTIVE_EVAP_BUFFER`` % is added to the deficit so the
+          plant has enough water to survive the block.
+
+        When ``soil_value`` is ``None`` the legacy prob-only formula is used.
+        """
         evidence = {
             "AirTemperature": temperature,
             "AirHumidity": humidity,
@@ -191,18 +239,46 @@ class SmartSprinklerBN:
         prob = float(result.values[result.name_to_no["NeedWater"]["yes"]])
 
         cfg = self.plant_configs[plant]
-        base_duration = cfg.get("watering_duration", 6)
-        max_duration = cfg.get("watering_duration_max", base_duration * 1.5)
-        min_duration = cfg.get("watering_duration_min", base_duration * 0.5)
+        max_dose_ml = cfg.get("max_dose_ml", cfg.get("watering_duration_max", 6) * 23.0)
+        min_dose_ml = cfg.get("min_dose_ml", cfg.get("watering_duration_min", 3) * 23.0)
+        target_soil = cfg.get("target_soil_moisture", 75.0)
 
         if prob < cfg["threshold"]:
-            dose = 0.0
-        else:
-            excess = (prob - cfg["threshold"]) / max(1e-9, 1.0 - cfg["threshold"])
-            excess = max(0.0, min(1.0, excess))
-            dose = min_duration + (max_duration - min_duration) * excess
+            return prob, 0.0
 
-        return prob, dose
+        if soil_value is not None:
+            current = float(soil_value)
+            deficit = target_soil - current
+            # Already at/above target → no need regardless of NeedWater=yes.
+            if deficit <= 0.0:
+                return prob, 0.0
+            # Tiny deficit → skip the pulse entirely (avoids dribbles).
+            if deficit < 5.0:
+                return prob, 0.0
+            # Proactive boost: pre-load water so the plant survives the hot
+            # block (when ``_watering_allowed`` will refuse to water).
+            if sim_hour is not None:
+                hours_until_hot = HOT_HOUR_START - sim_hour
+                if 0 < hours_until_hot <= LOOKAHEAD_HOURS:
+                    deficit += PROACTIVE_EVAP_BUFFER
+                    logger.debug(
+                        "Proactive boost for %s at h=%02d: deficit %.1f%% → %.1f%%",
+                        plant, sim_hour, deficit - PROACTIVE_EVAP_BUFFER, deficit,
+                    )
+            # Convert the soil deficit (%) into the mL the plant actually
+            # needs, using its pot capacity. mL is the canonical unit; the
+            # caller converts to seconds at the pump's flow rate.
+            pot_capacity_ml = float(cfg.get("pot_capacity_ml", 500.0))
+            dose_ml = deficit / 100.0 * pot_capacity_ml
+            dose_ml = max(min_dose_ml, min(max_dose_ml, dose_ml))
+            return prob, dose_ml
+
+        # Fallback: prob-only formula (kept for callers that don't pass soil).
+        # Uses mL as the canonical unit: dose scales linearly with prob.
+        excess = (prob - cfg["threshold"]) / max(1e-9, 1.0 - cfg["threshold"])
+        excess = max(0.0, min(1.0, excess))
+        dose_ml = min_dose_ml + (max_dose_ml - min_dose_ml) * excess
+        return prob, dose_ml
 
     # ── Inference ────────────────────────────────────────────────────
 

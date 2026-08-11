@@ -193,21 +193,29 @@ class _MockESPHandler(BaseHTTPRequestHandler):
             s.active_plant = "null"
 
 
-def apply_watering_effect(state: MockESPState, target_name: str, dose_seconds: float) -> None:
+def apply_watering_effect(
+    state: MockESPState,
+    target_name: str,
+    dose_ml: float,
+    pot_capacity_ml: float = 500.0,
+) -> None:
     """Apply the *side-effect* of a watering pulse to the mock soil.
 
-    The ESP firmware turns the pump on for `dose` seconds; we model the
-    effect as `WATERING_BOOST_PERCENT * (dose / reference_dose)` percent soil
-    moisture. The reference dose is the plant's nominal ``watering_duration``
-    from the test config, falling back to the GUI's default of 6s.
+    The dose is the volume of water the ESP delivered (in mL). The boost
+    applied to the soil moisture reading is
+
+        boost_percent = dose_ml / pot_capacity_ml × 100
+
+    where ``pot_capacity_ml`` is the plant's configured "mL needed to lift
+    soil by 100 %". With pot_capacity_ml=500 a 115 mL pulse → +23 % soil,
+    matching the calibrated behaviour from before the mL refactor.
     """
     if target_name in state.soil_moisture_by_plant:
         current = state.soil_moisture_by_plant[target_name]
-        # dose in seconds → percent. Reference 6s → 30% boost (matches batch sims).
-        boost = WATERING_BOOST_PERCENT * (dose_seconds / 6.0)
+        boost = dose_ml / max(1e-9, pot_capacity_ml) * 100.0
         state.soil_moisture_by_plant[target_name] = min(100.0, current + boost)
     state.watering_count += 1
-    state.last_doses[target_name] = dose_seconds
+    state.last_doses[target_name] = dose_ml
 
 
 # ── Weather, evaporation, soil dynamics ───────────────────────────────────
@@ -273,11 +281,18 @@ class SimGUIEvent:
     sky: str  # "clear" / "cloudy"
     soil_by_plant: dict[str, float]
     avg_soil: float
-    triggered: dict[str, float] = field(default_factory=dict)  # plant -> dose
+    triggered: dict[str, float] = field(default_factory=dict)  # plant -> dose (mL)
     hour_blocked: list[str] = field(default_factory=list)
     inference_notes: list[str] = field(default_factory=list)
+    flow_rate_ml_per_min: float | None = None
 
     def to_public(self) -> dict:
+        flow_rate = self.flow_rate_ml_per_min
+        dose_seconds_by_plant = (
+            {p: round(d * 60.0 / flow_rate, 2) for p, d in self.triggered.items()}
+            if flow_rate
+            else {}
+        )
         return {
             "hour": self.hour,
             "hour_of_day": self.hour_of_day,
@@ -287,7 +302,9 @@ class SimGUIEvent:
             "sky": self.sky,
             "soil_by_plant": {p: round(v, 2) for p, v in self.soil_by_plant.items()},
             "avg_soil": round(self.avg_soil, 2),
-            "triggered": {p: round(d, 3) for p, d in self.triggered.items()},
+            "triggered": {p: round(d, 1) for p, d in self.triggered.items()},  # mL
+            "dose_seconds_by_plant": dose_seconds_by_plant,
+            "flow_rate_ml_per_min": self.flow_rate_ml_per_min,
             "hour_blocked": list(self.hour_blocked),
             "notes": list(self.inference_notes),
         }
@@ -539,8 +556,9 @@ class SimulationEngine:
         hour_blocked = list(status.get("_blocked_by_hour", []))
 
         # Apply post-inference watering effects to soil (+ boost per dose)
-        for plant_name, dose in triggered.items():
-            apply_watering_effect(self.state, plant_name, dose)
+        for plant_name, dose_ml in triggered.items():
+            pot_capacity_ml = float(cfg["plants_cfg"].get(plant_name, {}).get("pot_capacity_ml", 500.0))
+            apply_watering_effect(self.state, plant_name, dose_ml, pot_capacity_ml)
 
         # 6. Increment hour
         self.hour += 1
@@ -557,6 +575,7 @@ class SimulationEngine:
             triggered=triggered,
             hour_blocked=hour_blocked,
             inference_notes=[],
+            flow_rate_ml_per_min=api_state.config.get("flow_rate_ml_per_min"),
         )
 
 
@@ -645,9 +664,21 @@ def _bayerian_full_config(sim_cfg: dict) -> dict[str, Any]:
     """Translate a simulation config into the full Bayesian app config.
 
     The api's ``create_app`` expects ``server``, ``esp``, ``weather``,
-    ``thresholds`` and ``plants`` keys; the GUI/simulation only cares about
-    ``plants``.
+    ``thresholds``, ``plants`` and ``watering_allowed_hours`` keys; the
+    GUI/simulation only cares about ``plants``. The watering window is read
+    from the project ``config.yaml`` so the simulated inference uses the
+    same global hours the production server does.
     """
+    bayesian_cfg_path = PROJECT_ROOT / "config.yaml"
+    global_watering_hours: list[int] | None = None
+    flow_rate: float | None = None
+    if bayesian_cfg_path.exists():
+        import yaml
+        with open(bayesian_cfg_path) as f:
+            bayesian_cfg = yaml.safe_load(f)
+        global_watering_hours = bayesian_cfg.get("watering_allowed_hours")
+        flow_rate = bayesian_cfg.get("flow_rate_ml_per_min")
+
     return {
         "server": {"host": "127.0.0.1", "port": 8080},
         "esp": {"base_url": "http://localhost", "poll_interval": 1800},
@@ -661,5 +692,7 @@ def _bayerian_full_config(sim_cfg: dict) -> dict[str, Any]:
             "temperature": {"low": 16, "medium": 29},
             "humidity": {"low": 45, "medium": 70},
         },
+        "flow_rate_ml_per_min": flow_rate,
+        "watering_allowed_hours": global_watering_hours,
         "plants": sim_cfg["plants_cfg"],
     }

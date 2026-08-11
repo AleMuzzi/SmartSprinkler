@@ -558,13 +558,31 @@ def _inference_cycle(st: AppState):
         log_event("error", "Inference cycle failed", details="See server logs for traceback")
 
 
-def _watering_allowed(plant_cfg: dict, hour: int) -> bool:
+# Hard, model-independent floor on watering pulse volume. Any dose the BN
+# recommends below this is dropped before the ESP command is sent, so we
+# never spin the pump for a dribble that doesn't move the soil needle.
+# Lives in api.py (not bayesian_network.py) on purpose: this is a
+# hardware-level constraint, not part of the probabilistic model.
+# 115 mL ≈ 5 s at 1380 mL/min — the previous floor.
+_MIN_DOSE_ML = 115.0
+
+
+def _watering_allowed(plant_cfg: dict, hour: int, st: AppState | None = None) -> bool:
     """Return True if the plant may be watered at the given hour.
 
-    Allowed hours default to evening/night/morning (cooler), excluding midday.
-    Can be overridden per-plant via `watering_allowed_hours`.
+    The allowed hours are configured globally in ``config.yaml`` at the root
+    level as ``watering_allowed_hours``. They apply uniformly to every plant
+    in the system. Per-plant overrides are no longer supported.
+
+    If neither ``st.config["watering_allowed_hours"]`` nor the per-plant
+    field is set, falls back to a sensible default (night/morning/evening,
+    excluding 11-16).
     """
-    allowed = plant_cfg.get("watering_allowed_hours")
+    allowed: list[int] | None = None
+    if st is not None and st.config is not None:
+        allowed = st.config.get("watering_allowed_hours")
+    if allowed is None:
+        allowed = plant_cfg.get("watering_allowed_hours")  # legacy fallback
     if allowed is None:
         allowed = list(range(0, 11)) + list(range(17, 24))
     return hour in allowed
@@ -627,7 +645,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             plant_sm = float(raw_sm) if raw_sm is not None else float(status["soil_moisture"])
             soil = st.esp.discretize_soil_moisture(plant_sm)
 
-            if not _watering_allowed(cfg, hour_now):
+            if not _watering_allowed(cfg, hour_now, st=st):
                 logger.info(
                     "  %s → hour=%02d not in allowed hours, skip (soil=%s)",
                     cfg["display_name"], hour_now, soil,
@@ -644,31 +662,55 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             )
 
             with st.lock:
-                prob, dose = st.bn.query_with_dose(
+                prob, dose_ml = st.bn.query_with_dose(
                     plant=plant_name,
                     temperature=temp,
                     humidity=humid,
                     cloud_cover=wx["cloud_cover"],
                     soil_moisture=soil,
                     rain_forecast=wx["rain_forecast"],
+                    soil_value=plant_sm,
+                    sim_hour=hour_now,
                 )
+            # Hard, model-independent floor on watering volume. Any pulse
+            # below this is dropped — tiny dribbles waste pump cycles and
+            # don't meaningfully move the soil-moisture needle. Floor is in
+            # mL because that's the canonical unit; conversion to seconds
+            # happens below.
+            if 0 < dose_ml < _MIN_DOSE_ML:
+                logger.info(
+                    "  %s → dose %.1fmL below _MIN_DOSE_ML=%.0fmL, skip",
+                    cfg["display_name"], dose_ml, _MIN_DOSE_ML,
+                )
+                log_event(
+                    "inference",
+                    f"Watering skipped (pulse too small): {cfg['display_name']}",
+                    details=f"dose={dose_ml:.1f}mL min={_MIN_DOSE_ML}mL prob={prob:.2f}",
+                )
+                st._last_watered_doses.pop(plant_name, None)
+                continue
             threshold = cfg["threshold"]
-            will_water = dose > 0 and not pump_on
+            will_water = dose_ml > 0 and not pump_on
+
+            # Convert mL → seconds at the pump's nominal flow rate so the
+            # ESP command sleeps the right amount of time.
+            flow_rate = float(st.config.get("flow_rate_ml_per_min", 1380.0))
+            dose_seconds = dose_ml * 60.0 / flow_rate if dose_ml > 0 else 0.0
 
             logger.info(
-                "  %s → P=%.2f (thresh=%.2f) dose=%.2fs%s",
-                cfg["display_name"], prob, threshold, dose,
+                "  %s → P=%.2f (thresh=%.2f) dose=%.0fmL (%.2fs)%s",
+                cfg["display_name"], prob, threshold, dose_ml, dose_seconds,
                 "  ✓ WATERING" if will_water else "",
             )
 
             if will_water and status.get("water_low_alert") != "on":
                 st.esp.start_watering(cfg["esp_target"])
-                time.sleep(dose)
+                time.sleep(dose_seconds)
                 st.esp.stop_watering(cfg["esp_target"])
-                st._last_watered_doses[plant_name] = dose
-                triggered_doses[plant_name] = dose
+                st._last_watered_doses[plant_name] = dose_ml
+                triggered_doses[plant_name] = dose_ml
                 log_event("command", f"Watering triggered: {cfg['display_name']}",
-                          details=f"target={cfg['esp_target']} duration={dose:.2f}s prob={prob:.2f} threshold={threshold} hour={hour_now}")
+                          details=f"target={cfg['esp_target']} dose={dose_ml:.0f}mL ({dose_seconds:.2f}s) prob={prob:.2f} threshold={threshold} hour={hour_now}")
                 triggered_plants.append(plant_name)
             else:
                 st._last_watered_doses.pop(plant_name, None)
