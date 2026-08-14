@@ -104,6 +104,18 @@ export async function fetchAuditLog({ filter = '', category = null, limit = 200 
   return res.json()
 }
 
+export async function exportAuditLogCsv({ filter = '', category = null } = {}) {
+  const { bayesianUrl } = getSettings()
+  const params = new URLSearchParams()
+  if (filter) params.set('filter', filter)
+  if (category) params.set('category', category)
+  const qs = params.toString()
+  const url = `${bayesianUrl}/api/audit-log/export${qs ? '?' + qs : ''}`
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) throw new Error(`Audit log export failed: ${res.status}`)
+  return { blob: await res.blob(), contentDisposition: res.headers.get('content-disposition') || '' }
+}
+
 export async function sendBayesianManualWater(plantType) {
   const { bayesianUrl } = getSettings()
   const res = await fetchWithTimeout(`${bayesianUrl}/api/plants/manual-water`, {

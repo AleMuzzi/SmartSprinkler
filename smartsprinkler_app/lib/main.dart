@@ -7,6 +7,7 @@ import 'ui/dashboard/dashboard_view.dart';
 import 'ui/dashboard/system_control_view.dart';
 import 'ui/camera/camera_view.dart';
 import 'data/water_alert_service.dart';
+import 'data/network_monitor.dart';
 import 'data/settings.dart';
 import 'data/sprinkler.dart';
 
@@ -21,18 +22,31 @@ void main() async {
   final sprinkler = Sprinkler();
   await sprinkler.restoreWaterAlertState();
 
+  // Start watching the connection so apiUrl/bayesianUrl automatically
+  // route to the home LAN or to the external endpoint based on Wi-Fi.
+  final networkMonitor = NetworkMonitor();
+  await networkMonitor.start();
+
   final alertService = WaterAlertService();
   await alertService.init(settings.apiUrl);
   final hasPermission = await alertService.ensureNotificationPermission();
   await alertService.start();
 
-  runApp(SmartSprinklerApp(hasNotificationPermission: hasPermission));
+  runApp(SmartSprinklerApp(
+    hasNotificationPermission: hasPermission,
+    networkMonitor: networkMonitor,
+  ));
 }
 
 class SmartSprinklerApp extends StatelessWidget {
-  const SmartSprinklerApp({super.key, this.hasNotificationPermission = true});
+  const SmartSprinklerApp({
+    super.key,
+    this.hasNotificationPermission = true,
+    this.networkMonitor,
+  });
 
   final bool hasNotificationPermission;
+  final NetworkMonitor? networkMonitor;
 
   @override
   Widget build(BuildContext context) {
@@ -44,15 +58,23 @@ class SmartSprinklerApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5F7FA),
       ),
-      home: MainNavigationPage(hasNotificationPermission: hasNotificationPermission),
+      home: MainNavigationPage(
+        hasNotificationPermission: hasNotificationPermission,
+        networkMonitor: networkMonitor,
+      ),
     );
   }
 }
 
 class MainNavigationPage extends StatefulWidget {
-  const MainNavigationPage({super.key, this.hasNotificationPermission = true});
+  const MainNavigationPage({
+    super.key,
+    this.hasNotificationPermission = true,
+    this.networkMonitor,
+  });
 
   final bool hasNotificationPermission;
+  final NetworkMonitor? networkMonitor;
 
   @override
   State<MainNavigationPage> createState() => _MainNavigationPageState();
@@ -104,8 +126,13 @@ class _MainNavigationPageState extends State<MainNavigationPage> with WidgetsBin
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => DashboardViewModel(),
+    final nm = widget.networkMonitor;
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => DashboardViewModel()),
+        if (nm != null)
+          ChangeNotifierProvider<NetworkMonitor>.value(value: nm),
+      ],
       child: Scaffold(
         body: IndexedStack(
           index: _currentIndex,

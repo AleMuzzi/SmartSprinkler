@@ -21,10 +21,10 @@ class DashboardView extends StatelessWidget {
           children: [
             _WaterAlertBanner(),
             _TopGaugeSection(),
+            _CisternCompact(),
             Divider(height: 1, color: Color(0xFFE0E4E8)),
             Expanded(child: _PlantCarousel()),
             Divider(height: 1, color: Color(0xFFE0E4E8)),
-            _CisternSection(),
             _WeatherFooter(),
           ],
         ),
@@ -81,7 +81,7 @@ class _TopGaugeSection extends StatelessWidget {
     final vm = context.watch<DashboardViewModel>();
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.fromLTRB(0, 16, 0, 0),
       child: Column(
         children: [
           Row(
@@ -246,8 +246,8 @@ class _ConnectionDot extends StatelessWidget {
 }
 
 
-class _CisternSection extends StatelessWidget {
-  const _CisternSection();
+class _CisternCompact extends StatelessWidget {
+  const _CisternCompact();
 
   @override
   Widget build(BuildContext context) {
@@ -257,130 +257,100 @@ class _CisternSection extends StatelessWidget {
     final pct = Sprinkler().cisternLevelPct;
     final lowAlert = Sprinkler().waterLowAlert;
 
+    final litres = (capacity > 0) ? (level / 1000).toStringAsFixed(1) : '–';
+    final pctClamped = pct.clamp(0.0, 100.0);
+
+    Color barColor;
+    if (pctClamped < 15.0) {
+      barColor = const Color(0xFFF44336);
+    } else if (pctClamped < 35.0) {
+      barColor = const Color(0xFFFF9800);
+    } else {
+      barColor = const Color(0xFF4CAF50);
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: lowAlert ? const Color(0xFFF44336) : const Color(0xFFE8EDF2),
-            width: lowAlert ? 2 : 1,
+            width: lowAlert ? 1.5 : 1,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                const Text('💧', style: TextStyle(fontSize: 20)),
-                const SizedBox(width: 8),
-                const Text(
-                  'Cisterna',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2D3748),
-                  ),
-                ),
-                const Spacer(),
-                if (lowAlert)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF44336),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      '⚠️ LOW',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
+            const Text('💧', style: TextStyle(fontSize: 16)),
+            const SizedBox(width: 8),
+            const Text(
+              'Cisterna',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2D3748),
+              ),
             ),
-            const SizedBox(height: 12),
-            if (!dataReceived) ...[
-              // No real data yet — server offline or never replied.
-              const Text(
-                '— no data —',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF718096),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: dataReceived ? pctClamped / 100.0 : 0,
+                  minHeight: 6,
+                  backgroundColor: const Color(0xFFE8EDF2),
+                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
                 ),
               ),
-              const SizedBox(height: 4),
+            ),
+            const SizedBox(width: 10),
+            if (!dataReceived)
               const Text(
-                'In attesa della prima risposta dal server',
+                '—',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xFFA0AEC0),
                 ),
+              )
+            else ...[
+              Text(
+                '$litres L',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2D3748),
+                ),
               ),
-            ] else ...[
-              Builder(builder: (_) {
-                final litres = (level / 1000).toStringAsFixed(1);
-                final capacityL = (capacity / 1000).toStringAsFixed(0);
-                final pctClamped = pct.clamp(0.0, 100.0);
-
-                Color barColor;
-                if (pctClamped < 15.0) {
-                  barColor = const Color(0xFFF44336);
-                } else if (pctClamped < 35.0) {
-                  barColor = const Color(0xFFFF9800);
-                } else {
-                  barColor = const Color(0xFF4CAF50);
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          '$litres L',
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2D3748),
-                          ),
-                        ),
-                        Text(
-                          ' / $capacityL L',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF718096),
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${pctClamped.toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: barColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(
-                        value: pctClamped / 100.0,
-                        minHeight: 10,
-                        backgroundColor: const Color(0xFFE8EDF2),
-                        valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                      ),
-                    ),
-                  ],
-                );
-              }),
+              const SizedBox(width: 6),
+              Text(
+                '${pctClamped.toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: barColor,
+                ),
+              ),
+            ],
+            if (lowAlert) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF44336),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'LOW',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ],
         ),
@@ -475,7 +445,7 @@ class _PlantCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              height: 130,
+              height: 90,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: plant.imageUrl.isNotEmpty
@@ -484,7 +454,7 @@ class _PlantCard extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
                           color: const Color(0xFFE8EDF2),
-                          child: const Icon(Icons.eco, size: 40, color: Color(0xFFA0AEC0)),
+                          child: const Icon(Icons.eco, size: 32, color: Color(0xFFA0AEC0)),
                         ),
                       )
                     : Container(
@@ -563,9 +533,9 @@ class _PlantCard extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        padding: const EdgeInsets.symmetric(vertical: 4),
                       ),
-                      child: const Text('Water Now', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      child: const Text('Water Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],
@@ -596,12 +566,16 @@ class _WeatherFooter extends StatelessWidget {
           _WeatherTile(
             icon: Icons.thermostat,
             label: 'Temp',
-            value: w != null ? '${w.temperature.toStringAsFixed(1)}°C' : '--',
+            value: (w?.temperature != null)
+                ? '${w!.temperature!.toStringAsFixed(1)}°C'
+                : '--',
           ),
           _WeatherTile(
             icon: Icons.water_drop,
             label: 'Humidity',
-            value: w != null ? '${w.humidity.toStringAsFixed(0)}%' : '--',
+            value: (w?.humidity != null)
+                ? '${w!.humidity!.toStringAsFixed(0)}%'
+                : '--',
           ),
           _WeatherTile(
             icon: Icons.cloudy_snowing,

@@ -1,6 +1,6 @@
 class WeatherData {
-  final double temperature;
-  final double humidity;
+  final double? temperature;
+  final double? humidity;
   final String cloudCover;
   final String rainForecast;
   final DateTime fetchedAt;
@@ -15,8 +15,8 @@ class WeatherData {
 
   factory WeatherData.fromJson(Map<String, dynamic> json) {
     return WeatherData(
-      temperature: (json['temperature'] ?? 0.0).toDouble(),
-      humidity: (json['humidity'] ?? 0.0).toDouble(),
+      temperature: (json['temperature'] as num?)?.toDouble(),
+      humidity: (json['humidity'] as num?)?.toDouble(),
       cloudCover: json['cloud_cover'] ?? 'unknown',
       rainForecast: json['rain_forecast'] ?? 'unknown',
     );

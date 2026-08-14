@@ -95,18 +95,25 @@ class DashboardViewModel extends ChangeNotifier {
 
   Future<void> fetchEspStatus() => _fetchEspStatus();
   Future<void> fetchBayesianStatus() => _fetchBayesianStatus();
+  Future<void> fetchWeatherStatus() => _fetchWeatherStatus();
+  Future<void> fetchCisternStatus() => _fetchCisternStatus();
 
   Future<void> _fetchEspStatus() async {
-    debugPrint('[_fetchEspStatus] URL: ${settings.apiUrl}/status');
+    // Status comes from the Bayesian server, which caches the latest
+    // payload it observed during its inference / manual-water cycles.
+    // We no longer hit the ESP directly for /status — only /command goes
+    // there.
+    debugPrint('[_fetchEspStatus] URL: ${settings.bayesianUrl}/api/esp/status');
     try {
       final response = await http.get(
-        Uri.parse('${settings.apiUrl}/status'),
+        Uri.parse('${settings.bayesianUrl}/api/esp/status'),
       ).timeout(const Duration(seconds: 5));
 
       debugPrint('[_fetchEspStatus] status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
+        if (json.isEmpty) return; // server hasn't observed the ESP yet
         sprinkler.updateWithJson(json);
 
         if (json['soil_moisture_0'] != null) {

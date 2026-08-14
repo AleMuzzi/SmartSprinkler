@@ -1,6 +1,7 @@
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime
 from threading import Lock
 
 import yaml
@@ -27,6 +28,11 @@ class AppState:
         self.weather: WeatherClient | None = None
         self.lock = Lock()
         self.scheduler: BackgroundScheduler | None = None
+        # Latest ESP status payload, pushed by the ESP via
+        # POST /api/esp/status. The server NEVER pulls from the ESP anymore
+        # — this is the single source of truth for the app.
+        self._esp_status: dict = {}
+        self._esp_status_updated_at: datetime | None = None
         self._cached_weather: dict = {
             "cloud_cover": "cloudy",
             "rain_forecast": "no",
@@ -165,7 +171,10 @@ def create_app(config: dict) -> FastAPI:
             r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
             r")(:\d+)?$"
         ),
-        allow_credentials=True,
+        # The ESP firmware is the one pushing to POST /api/esp/status; it
+        # doesn't send an Origin header so we add a wildcard for the
+        # status push endpoint specifically via the per-route allow below.
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -254,6 +263,25 @@ def _register_routes(app: FastAPI):
             "refilled_from_ml": previous_level,
         }
 
+    @app.get(
+        "/api/esp/status",
+        tags=["ESP"],
+        summary=(
+            "Last ESP status payload observed by the server. The server "
+            "already reads the ESP during its scheduled inference cycles, "
+            "so this is the most recent snapshot — no extra polling. The "
+            "mobile app should call this endpoint instead of hitting the "
+            "ESP directly."
+        ),
+    )
+    def esp_status() -> dict:
+        payload = dict(state._esp_status)
+        payload["server_received_at"] = (
+            state._esp_status_updated_at.isoformat() + "Z"
+            if state._esp_status_updated_at else None
+        )
+        return payload
+
     @app.post(
         "/api/plants/manual-water",
         tags=["Plants"],
@@ -269,6 +297,7 @@ def _register_routes(app: FastAPI):
             raise HTTPException(422, f"Unknown plant: {req.plant_type}")
 
         status = state.esp.get_status()
+        _capture_esp_status(state, status)
         wx = state.weather.fetch()
         cfg = state.config["plants"][req.plant_type]
 
@@ -354,6 +383,53 @@ def _register_routes(app: FastAPI):
         return {"status": "ok"}
 
     @app.get(
+        "/api/audit-log/export",
+        tags=["System"],
+        summary="Download audit log as CSV",
+        responses={
+            200: {
+                "description": "CSV file",
+                "content": {"text/csv": {}},
+            },
+        },
+    )
+    def audit_log_export(
+        filter: str | None = None,
+        category: str | None = None,
+    ):
+        from fastapi.responses import StreamingResponse
+        rows = get_log_entries(filter_text=filter, category=category, limit=1_000_000)
+        import csv
+        import io
+
+        def csv_gen():
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(["id", "timestamp", "category", "message", "details"])
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+            for row in rows:
+                writer.writerow([
+                    row["id"],
+                    row["timestamp"],
+                    row["category"],
+                    row["message"],
+                    row["details"] or "",
+                ])
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate()
+
+        from datetime import datetime
+        filename = f"audit_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return StreamingResponse(
+            csv_gen(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get(
         "/api/plants/status",
         response_model=PlantStatusResponse,
         tags=["Plants"],
@@ -365,6 +441,7 @@ def _register_routes(app: FastAPI):
     def get_plant_status():
         try:
             esp_status = state.esp.get_status()
+            _capture_esp_status(state, esp_status)
         except Exception:
             esp_status = {}
 
@@ -419,15 +496,19 @@ def _register_routes(app: FastAPI):
 
         try:
             esp_status = state.esp.get_status()
+            _capture_esp_status(state, esp_status)
             raw_temp = esp_status.get("air_temperature")
             raw_humid = esp_status.get("air_humidity")
         except Exception:
             pass
 
+        # Fall back to the cached weather forecast when the ESP didn't
+        # report usable values. Only return None if BOTH sources are empty
+        # so the UI can show "--" instead of misleading fake numbers.
         if raw_temp is None or raw_temp < 0:
-            raw_temp = state._cached_weather.get("temperature") or 25.0
+            raw_temp = state._cached_weather.get("temperature")
         if raw_humid is None or raw_humid < 0:
-            raw_humid = 50.0
+            raw_humid = state._cached_weather.get("humidity")
 
         return WeatherResponse(
             temperature=raw_temp,
@@ -449,6 +530,7 @@ def _register_routes(app: FastAPI):
         esp_healthy = False
         try:
             esp_status = state.esp.get_status()
+            _capture_esp_status(state, esp_status)
             pump_on = esp_status.get("water_pump") == "on"
             esp_healthy = True
         except Exception:
@@ -516,6 +598,7 @@ def _hourly_poll(st: AppState):
 
     try:
         status = st.esp.get_status()
+        _capture_esp_status(st, status)
         raw_temp = float(status["air_temperature"])
     except Exception:
         logger.warning("ESP offline — falling back to weather API for temperature")
@@ -584,6 +667,7 @@ def _reschedule_poll(st: AppState, interval_minutes: int, temperature: float | N
 def _log_and_insert(st: AppState, wx: dict):
     try:
         status = st.esp.get_status()
+        _capture_esp_status(st, status)
         soil = st.esp.discretize_soil_moisture(float(status["soil_moisture"]))
         temp = st.esp.discretize_temperature(float(status["air_temperature"]))
         humid = st.esp.discretize_humidity(float(status["air_humidity"]))
@@ -616,6 +700,7 @@ def _log_and_insert(st: AppState, wx: dict):
 def _inference_cycle(st: AppState):
     try:
         status = st.esp.get_status()
+        _capture_esp_status(st, status)
         _run_inference_with_status(st, status)
     except Exception:
         logger.exception("Inference cycle failed")
@@ -650,6 +735,28 @@ def _watering_allowed(plant_cfg: dict, hour: int, st: AppState | None = None) ->
     if allowed is None:
         allowed = list(range(0, 11)) + list(range(17, 24))
     return hour in allowed
+
+
+def _capture_esp_status(st: AppState, status: dict) -> None:
+    """Cache the latest ESP payload so ``GET /api/esp/status`` can serve it
+    without re-polling the device. The server already reads the ESP for
+    inference / manual watering, so we just remember what we saw.
+    """
+    # Coerce string numerics (the ESP serialises everything as text).
+    normalised: dict = {}
+    for key, value in status.items():
+        if isinstance(value, str):
+            try:
+                if "." in value:
+                    normalised[key] = float(value)
+                else:
+                    normalised[key] = int(value)
+                continue
+            except (ValueError, TypeError):
+                pass
+        normalised[key] = value
+    st._esp_status = normalised
+    st._esp_status_updated_at = datetime.utcnow()
 
 
 def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:

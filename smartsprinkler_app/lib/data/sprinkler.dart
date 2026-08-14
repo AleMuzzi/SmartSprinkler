@@ -100,11 +100,16 @@ class Sprinkler with ChangeNotifier {
   }
 
   void updateWeatherFromServer(Map<String, dynamic> json) {
-    final t = _parseDoubleOrNan(json['temperature']);
-    final h = _parseDoubleOrNan(json['humidity']);
-    if (t == 0.0 && h == 0.0) return; // ignore empty payloads
-    _instance._serverTempC = t;
-    _instance._serverHumidityPct = h;
+    final tRaw = json['temperature'];
+    final hRaw = json['humidity'];
+    // null is a valid payload (means "no data on the server"). Don't try to
+    // convert it to 0.0 — we'd lose the distinction between "real 0 °C" and
+    // "missing data".
+    if (tRaw == null && hRaw == null) return;
+    final t = _parseDoubleOrNan(tRaw);
+    final h = _parseDoubleOrNan(hRaw);
+    _instance._serverTempC = tRaw == null ? null : t;
+    _instance._serverHumidityPct = hRaw == null ? null : h;
     _instance._weatherFromServerReceived = true;
     _instance.notifyListeners();
   }

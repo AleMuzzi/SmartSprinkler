@@ -23,6 +23,7 @@ class _AuditLogViewState extends State<AuditLogView> {
   List<AuditLogEntry> _entries = [];
   String _category = '';
   bool _loading = false;
+  bool _downloading = false;
   String? _error;
 
   @override
@@ -67,6 +68,35 @@ class _AuditLogViewState extends State<AuditLogView> {
     }
   }
 
+  Future<void> _downloadCsv() async {
+    setState(() {
+      _downloading = true;
+      _error = null;
+    });
+    try {
+      final result = await _service.downloadCsv(
+        filter: _filterController.text,
+        category: _category.isEmpty ? null : _category,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Salvato: ${result.path}')),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloading = false;
+        });
+      }
+    }
+  }
+
   Color _colorForCategory(String category) =>
       _categoryColors[category] ?? Colors.grey.shade700;
 
@@ -98,6 +128,16 @@ class _AuditLogViewState extends State<AuditLogView> {
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               const Spacer(),
+              IconButton(
+                onPressed: _downloading ? null : _downloadCsv,
+                icon: _downloading
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download),
+                tooltip: 'Download CSV',
+              ),
               IconButton(
                 onPressed: _loading ? null : _load,
                 icon: const Icon(Icons.refresh),

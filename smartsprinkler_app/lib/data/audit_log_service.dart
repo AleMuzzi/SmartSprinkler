@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:smartsprinkler_app/data/settings.dart';
 
@@ -54,5 +55,49 @@ class AuditLogService {
         .map((e) => AuditLogEntry.fromJson(e as Map<String, dynamic>))
         .toList();
     return entries;
+  }
+
+  /// Downloads the audit log as a CSV file. Returns the file path where
+  /// it was saved and the suggested filename (or null if the server
+  /// didn't provide one).
+  Future<({String path, String? suggestedName})> downloadCsv({
+    String filter = '',
+    String? category,
+  }) async {
+    final query = <String, String>{};
+    if (filter.isNotEmpty) query['filter'] = filter;
+    if (category != null && category.isNotEmpty) query['category'] = category;
+
+    final uri = Uri.parse('${settings.bayesianUrl}/api/audit-log/export').replace(
+      queryParameters: query.isEmpty ? null : query,
+    );
+
+    final response = await http.get(uri).timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw Exception('Audit log export failed: ${response.statusCode}');
+    }
+
+    // Parse Content-Disposition for the suggested filename.
+    String? suggested;
+    final cd = response.headers['content-disposition'];
+    if (cd != null) {
+      final m = RegExp(r'filename="?([^";]+)"?').firstMatch(cd);
+      if (m != null) suggested = m.group(1);
+    }
+    suggested ??= 'audit_log_${DateTime.now().millisecondsSinceEpoch}.csv';
+
+    // Pick a sensible Downloads directory on each platform.
+    final dir = await _downloadsDir();
+    final path = '$dir/$suggested';
+    final file = File(path);
+    await file.writeAsBytes(response.bodyBytes);
+    return (path: path, suggestedName: suggested);
+  }
+
+  Future<String> _downloadsDir() async {
+    // iOS / Android: use the app documents directory. Desktop / fallback
+    // could be a "Downloads" folder, but we keep it platform-neutral
+    // here to avoid pulling in path_provider at this layer.
+    return Directory.systemTemp.path;
   }
 }

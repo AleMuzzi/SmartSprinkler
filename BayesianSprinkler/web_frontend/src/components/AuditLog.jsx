@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { fetchAuditLog } from '../services/api.js'
+import { fetchAuditLog, exportAuditLogCsv } from '../services/api.js'
 
 const CATEGORY_COLORS = {
   inference: 'bg-blue-100 text-blue-700',
@@ -23,6 +23,7 @@ export function AuditLog({ initialFilter = '' }) {
   const [filter, setFilter] = useState(initialFilter)
   const [category, setCategory] = useState('')
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState(null)
   const [count, setCount] = useState(0)
 
@@ -40,6 +41,33 @@ export function AuditLog({ initialFilter = '' }) {
     }
   }
 
+  const downloadCsv = async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      const { blob, contentDisposition } = await exportAuditLogCsv({
+        filter,
+        category: category || null,
+      })
+      // Try to honour server-suggested filename, fallback to timestamp.
+      let filename = `audit_log_${Date.now()}.csv`
+      const m = contentDisposition.match(/filename="?([^";]+)"?/)
+      if (m) filename = m[1]
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   useEffect(() => {
     load()
     const id = setInterval(load, 10000)
@@ -50,16 +78,25 @@ export function AuditLog({ initialFilter = '' }) {
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-gray-700 flex items-center gap-2">
-          <span>📋</span> Audit Log
+          <span>�</span> Audit Log
           <span className="text-xs text-gray-400 font-normal">({count} entries)</span>
         </h3>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="text-xs px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
-        >
-          {loading ? '...' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={downloadCsv}
+            disabled={exporting}
+            className="text-xs px-3 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300"
+          >
+            {exporting ? '...' : '⬇ Download CSV'}
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="text-xs px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
+          >
+            {loading ? '...' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
