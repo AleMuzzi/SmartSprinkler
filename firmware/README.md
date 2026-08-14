@@ -294,6 +294,38 @@ pio run --target upload -e nano
 pio device monitor -e nano  # serial console at 9600 baud (debug only — D3/D4 used for ESP)
 ```
 
+## WiFi configuration
+
+WiFi credentials can be provided through a local, gitignored file and (optionally) an encrypted NVS setting on the device.
+
+### Local file (recommended)
+
+1. Copy the template:
+   ```bash
+   cp firmware/include/wifi_secrets.h.example firmware/include/wifi_secrets.h
+   ```
+2. Edit it with your credentials:
+   ```cpp
+   #define WIFI_SSID_LOCAL "MyWiFi"
+   #define WIFI_PASSWORD_LOCAL "MyPassword"
+   ```
+3. `firmware/include/wifi_secrets.h` is ignored via `.gitignore`, so it will never be pushed. Build normally:
+   ```bash
+   pio run -e esp32
+   ```
+
+If the file is missing, the build still succeeds and the defaults are empty strings — the device will not connect to WiFi until credentials are provided.
+
+### Overriding on the device (NVS)
+
+The firmware stores WiFi credentials in NVS flash memory. On first boot it seeds NVS from the local file above. You can override them at runtime over the USB serial console:
+
+```
+WIFI MyWiFi MyPassword
+```
+
+The new credentials are persisted to NVS and the ESP reconnects immediately. NVS values always take precedence over the local file.
+
 ## Unused / Spare Components
 
 - **74HC4051 (×3)** — 8-channel analog muxes. Not needed; the Arduino Nano provides 4 dedicated ADC channels.
@@ -302,4 +334,4 @@ pio device monitor -e nano  # serial console at 9600 baud (debug only — D3/D4 
 - **GPIO 4** — freed up (was ADS1115 SCL). Available for future use.
 - **GPIO 16** — free, previously used for valve relays 2 and 3.
 
-WiFi credentials are hardcoded in `src/esp32/main.cpp`.
+WiFi credentials are configured via the gitignored local file `firmware/include/wifi_secrets.h` — see [WiFi configuration](#wifi-configuration).

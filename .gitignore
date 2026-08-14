@@ -78,6 +78,9 @@ BayesianSprinkler/tests/simulations/**/run_*/
 .piolibdeps/
 .pioinit
 
+# Local WiFi credentials (never commit secrets)
+firmware/include/wifi_secrets.h
+
 # Flutter build output
 build/
 

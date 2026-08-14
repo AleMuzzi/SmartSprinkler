@@ -20,6 +20,8 @@
 
 #include <ESP32Servo.h>
 #include <HardwareSerial.h>
+#include <Preferences.h>
+#include <esp_task_wdt.h>
 
 #define PIN_PUMP_RELAY 12
 #define PIN_ROTARY_SERVO 13
@@ -38,9 +40,22 @@
 #define NANO_TX_PIN 15
 #define SOIL_DRY_ADC 1000
 
-constexpr char ssid[15] = "Brignuzzi WiFi";
-constexpr char password[25] = "88uffleukticegscwrizaqrt";
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#endif
+
+#ifndef WIFI_SSID_LOCAL
+#define WIFI_SSID_LOCAL ""
+#endif
+#ifndef WIFI_PASSWORD_LOCAL
+#define WIFI_PASSWORD_LOCAL ""
+#endif
+
 constexpr char hostname[16] = "smart_sprinkler";
+
+Preferences prefs;
+String wifi_ssid;
+String wifi_password;
 
 const IPAddress local_IP(192, 168, 1, 10);
 const IPAddress gateway(192, 168, 1, 1);
@@ -76,6 +91,13 @@ int blocked_amount_ml = 0;
 bool dispensing_specific = false;
 int dispensing_target_ml = 0;
 unsigned long dispensing_start_ms = 0;
+bool pump_start_pending = false;
+unsigned long pump_start_planned_ms = 0;
+
+bool calibration_in_progress = false;
+int calibration_step = 0;
+bool calibration_all_success = true;
+unsigned long calibration_moved_at_ms = 0;
 
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
@@ -84,8 +106,15 @@ void plant_to_servo(Target::Value target);
 const char* target_to_string(Target::Value target);
 void read_nano_soil_moistures();
 int servo_degrees_to_us(float degrees);
-void calibrate_rotary();
+void begin_calibration();
+void tick_calibration();
 void move_servo_to_position(int position);
+void tick_dispensing();
+void schedule_pump_start();
+void load_wifi_credentials();
+void on_wifi_connected(WiFiEvent_t event);
+void on_wifi_disconnected(WiFiEvent_t event);
+void handle_serial_command();
 
 void setup_command_routes();
 
@@ -99,29 +128,44 @@ void setup() {
     Serial.println("###############################");
     Serial.println();
 
+    esp_task_wdt_init(10, true);
+    esp_task_wdt_add(NULL);
+
+    load_wifi_credentials();
+
     // Camera::init();
 
     Serial.print("Device's MAC Address: ");
     Serial.println(WiFi.macAddress());
 
+    WiFi.onEvent(on_wifi_connected, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    WiFi.onEvent(on_wifi_disconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+
     WiFi.mode(WIFI_MODE_STA);
     WiFi.setHostname(hostname);
-    WiFi.begin(ssid, password);
+    WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
 
     Serial.print("Connecting to WiFi");
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
+    const unsigned long wifi_timeout_start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - wifi_timeout_start < 20000) {
+        delay(200);
+        esp_task_wdt_reset();
         Serial.print(".");
     }
-    WiFiAddr = WiFi.localIP().toString();
-    Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
+    if (WiFi.status() == WL_CONNECTED) {
+        WiFiAddr = WiFi.localIP().toString();
+        Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
+    } else {
+        Serial.println("\n! WiFi not connected — restarting connection in background (reconnect handler active).");
+        WiFiAddr = String(hostname) + ".local";
+    }
 
     water_pump.switch_off();
 
     rotary_servo.attach(PIN_ROTARY_SERVO, SERVO_MIN_US, SERVO_MAX_US);
     Serial.println("Rotary servo attached (GPIO 13)");
 
-    calibrate_rotary();
+    begin_calibration();
 
     NanoSerial.begin(9600, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
     Serial.println("Nano UART2 initialized (RX=14, TX=15)");
@@ -134,7 +178,11 @@ void setup() {
 }
 
 void loop() {
+    esp_task_wdt_reset();
+
     const unsigned long currentMillis = millis();
+
+    tick_calibration();
 
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
@@ -152,16 +200,8 @@ void loop() {
         command_manager.poll();
     }
 
-    if (dispensing_specific && water_pump.is_on()) {
-        const unsigned long elapsed_ms = millis() - dispensing_start_ms;
-        const unsigned long duration_ms = (static_cast<unsigned long>(dispensing_target_ml) * 60000UL) / FLOW_RATE_ML_PER_MIN;
-        if (elapsed_ms >= duration_ms) {
-            dispensing_specific = false;
-            dispensing_target_ml = 0;
-            water_pump.switch_off();
-            Serial.println("Auto-stop: target amount dispensed.");
-        }
-    }
+    tick_dispensing();
+    handle_serial_command();
 
     delay(10);
 }
@@ -268,50 +308,67 @@ void move_servo_to_position(int position) {
     Serial.println(" us)");
 }
 
-void calibrate_rotary() {
-    Serial.println("Starting rotary calibration...");
-    bool all_success = true;
+void begin_calibration() {
+    Serial.println("Starting rotary calibration (non-blocking)...");
+    calibration_in_progress = true;
+    calibration_step = 0;
+    calibration_all_success = true;
+    calibration_moved_at_ms = millis();
+    move_servo_to_position(0);
+}
 
-    for (int i = 0; i < ROTARY_POSITION_COUNT; i++) {
-        const float angle = servo_position_to_degrees(i);
-        const int target_us = servo_degrees_to_us(angle);
-        rotary_servo.writeMicroseconds(target_us);
-        delay(800);
-
-        const int actual_us = rotary_servo.readMicroseconds();
-        const int error = abs(actual_us - target_us);
-
-        if (error > 100) {
-            Serial.print("Calibration warning at position ");
-            Serial.print(i);
-            Serial.print(": expected ");
-            Serial.print(target_us);
-            Serial.print(" us, got ");
-            Serial.print(actual_us);
-            Serial.print(" us (error ");
-            Serial.print(error);
-            Serial.println(" us)");
-            all_success = false;
-        } else {
-            Serial.print("Position ");
-            Serial.print(i);
-            Serial.print(" OK (");
-            Serial.print(actual_us);
-            Serial.println(" us)");
-        }
+void tick_calibration() {
+    if (!calibration_in_progress) {
+        return;
     }
 
-    if (all_success) {
-        rotary_calibrated = true;
-        rotary_current_position = 0;
-        rotary_servo.writeMicroseconds(servo_degrees_to_us(0));
-        Serial.println("Rotary calibration: SUCCESS — all positions verified");
+    const unsigned long now = millis();
+    if (now - calibration_moved_at_ms < 800) {
+        return;
+    }
+
+    const int position = calibration_step;
+    const float angle = servo_position_to_degrees(position);
+    const int target_us = servo_degrees_to_us(angle);
+    const int actual_us = rotary_servo.readMicroseconds();
+    const int error = abs(actual_us - target_us);
+
+    if (error > 100) {
+        Serial.print("Calibration warning at position ");
+        Serial.print(position);
+        Serial.print(": expected ");
+        Serial.print(target_us);
+        Serial.print(" us, got ");
+        Serial.print(actual_us);
+        Serial.print(" us (error ");
+        Serial.print(error);
+        Serial.println(" us)");
+        calibration_all_success = false;
     } else {
-        rotary_calibrated = false;
+        Serial.print("Position ");
+        Serial.print(position);
+        Serial.print(" OK (");
+        Serial.print(actual_us);
+        Serial.println(" us)");
+    }
+
+    calibration_step++;
+    if (calibration_step >= ROTARY_POSITION_COUNT) {
+        calibration_in_progress = false;
+        if (calibration_all_success) {
+            rotary_calibrated = true;
+            Serial.println("Rotary calibration: SUCCESS — all positions verified");
+        } else {
+            rotary_calibrated = false;
+            Serial.println("Rotary calibration: PARTIAL — using software tracking");
+        }
         rotary_current_position = 0;
         rotary_servo.writeMicroseconds(servo_degrees_to_us(0));
-        Serial.println("Rotary calibration: PARTIAL — using software tracking");
+        return;
     }
+
+    calibration_moved_at_ms = now;
+    move_servo_to_position(calibration_step);
 }
 
 void plant_to_servo(Target::Value target) {
@@ -384,11 +441,18 @@ void read_nano_soil_moistures() {
 }
 
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg) {
+    if (calibration_in_progress) {
+        error_msg = "Rotary calibration in progress — try again in a few seconds.";
+        Serial.println(error_msg);
+        return false;
+    }
+
     switch (command->get_action()) {
         case Action::STOP:
             Serial.println("Stopping dispensing.");
             dispensing_specific = false;
             dispensing_target_ml = 0;
+            pump_start_pending = false;
             water_pump.switch_off();
             break;
         case Action::START:
@@ -401,8 +465,7 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
             Serial.println("Starting dispensing.");
             active_target = command->get_target();
             plant_to_servo(active_target);
-            delay(500);
-            water_pump.switch_on();
+            schedule_pump_start();
             break;
         case Action::DISPENSE_SPECIFIC_AMOUNT:
         {
@@ -413,12 +476,10 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
                 return false;
             }
             active_target = command->get_target();
-            plant_to_servo(active_target);
-            delay(500);
             dispensing_specific = true;
             dispensing_target_ml = command->get_amount();
-            dispensing_start_ms = millis();
-            water_pump.switch_on();
+            plant_to_servo(active_target);
+            schedule_pump_start();
             Serial.print("Dispensing ");
             Serial.print(command->get_amount());
             Serial.println(" ml (non-blocking).");
@@ -431,4 +492,101 @@ bool process_command(const std::shared_ptr<Command> &command, String& error_msg)
     }
 
     return true;
+}
+
+void schedule_pump_start() {
+    pump_start_pending = true;
+    pump_start_planned_ms = millis() + 500;
+}
+
+void tick_dispensing() {
+    const unsigned long now = millis();
+
+    if (pump_start_pending && now >= pump_start_planned_ms) {
+        pump_start_pending = false;
+        water_pump.switch_on();
+        if (dispensing_specific) {
+            dispensing_start_ms = now;
+        }
+        Serial.println("Pump switched ON (after servo settle).");
+    }
+
+    if (dispensing_specific && water_pump.is_on()) {
+        const unsigned long elapsed_ms = now - dispensing_start_ms;
+        const unsigned long duration_ms = (static_cast<unsigned long>(dispensing_target_ml) * 60000UL) / FLOW_RATE_ML_PER_MIN;
+        if (elapsed_ms >= duration_ms) {
+            dispensing_specific = false;
+            dispensing_target_ml = 0;
+            water_pump.switch_off();
+            Serial.println("Auto-stop: target amount dispensed.");
+        }
+    }
+}
+
+void load_wifi_credentials() {
+    prefs.begin("wifi", false);
+    wifi_ssid = prefs.getString("ssid", WIFI_SSID_LOCAL);
+    wifi_password = prefs.getString("password", WIFI_PASSWORD_LOCAL);
+    if (wifi_ssid.length() == 0 || wifi_password.length() == 0) {
+        wifi_ssid = WIFI_SSID_LOCAL;
+        wifi_password = WIFI_PASSWORD_LOCAL;
+        prefs.putString("ssid", wifi_ssid);
+        prefs.putString("password", wifi_password);
+    }
+    Serial.println("WiFi credentials loaded from NVS/local config.");
+}
+
+void on_wifi_connected(WiFiEvent_t event) {
+    WiFiAddr = WiFi.localIP().toString();
+    Serial.print("WiFi connected: ");
+    Serial.println(WiFiAddr);
+    Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
+}
+
+void on_wifi_disconnected(WiFiEvent_t event) {
+    WiFiAddr = String(hostname) + ".local";
+    Serial.println("WiFi disconnected — attempting to reconnect...");
+    WiFi.reconnect();
+}
+
+void handle_serial_command() {
+    if (Serial.available() == 0) {
+        return;
+    }
+
+    static String line = "";
+    while (Serial.available()) {
+        const char c = Serial.read();
+        if (c == '\n') {
+            line.trim();
+            if (line.length() > 0) {
+                Serial.print("Serial command: ");
+                Serial.println(line);
+                if (line.startsWith("WIFI")) {
+                    int first_space = line.indexOf(' ');
+                    if (first_space > 0) {
+                        const int second_space = line.indexOf(' ', first_space + 1);
+                        if (second_space > 0) {
+                            const String new_ssid = line.substring(first_space + 1, second_space);
+                            const String new_password = line.substring(second_space + 1);
+                            if (new_ssid.length() > 0 && new_password.length() > 0) {
+                                prefs.putString("ssid", new_ssid);
+                                prefs.putString("password", new_password);
+                                wifi_ssid = new_ssid;
+                                wifi_password = new_password;
+                                Serial.println("WiFi credentials updated. Reconnecting...");
+                                WiFi.disconnect();
+                                WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
+                            }
+                        }
+                    }
+                } else {
+                    Serial.println("Unknown command. Usage: WIFI <ssid> <password>");
+                }
+            }
+            line = "";
+        } else {
+            line += c;
+        }
+    }
 }
