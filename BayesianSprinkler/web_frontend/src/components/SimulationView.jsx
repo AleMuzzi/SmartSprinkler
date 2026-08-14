@@ -66,7 +66,7 @@ function PlantCard({ plant, soil, justWatered, doseMl, flowRateMlPerMin }) {
 // ── Cistern card ──────────────────────────────────────────────────────────
 
 
-export function CisternCard({ levelMl, capacityMl, lowAlert, onRefill }) {
+export function CisternCard({ levelMl, capacityMl, lowAlert, onRefill, error }) {
   const hasData = levelMl !== null && capacityMl
   const pct = hasData ? Math.max(0, Math.min(100, (levelMl / capacityMl) * 100)) : null
   const litres = hasData ? (levelMl / 1000).toFixed(1) : '--'
@@ -83,6 +83,11 @@ export function CisternCard({ levelMl, capacityMl, lowAlert, onRefill }) {
     <div className={`relative bg-white rounded-2xl shadow-sm border p-4 transition-all ${
       lowAlert ? 'ring-2 ring-red-400 border-red-300' : 'border-gray-200'
     }`}>
+      {error && (
+        <div className="mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1 font-mono break-all">
+          ⚠️ Cisterna non raggiungibile: {error}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-xl">💧</span>

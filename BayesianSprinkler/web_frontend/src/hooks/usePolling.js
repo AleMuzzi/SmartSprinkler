@@ -71,6 +71,7 @@ export function useCisternStatus(baseUrl, intervalMs = 30000) {
     levelPct: null,
     waterLowAlert: false,
   })
+  const [cisternError, setCisternError] = useState(null)
 
   const fetch = useCallback(async () => {
     try {
@@ -81,8 +82,9 @@ export function useCisternStatus(baseUrl, intervalMs = 30000) {
         levelPct: data.level_pct,
         waterLowAlert: data.water_low_alert,
       })
+      setCisternError(null)
     } catch (e) {
-      // swallow; UI just keeps last known state
+      setCisternError(e.message)
     }
   }, [baseUrl])
 
@@ -97,5 +99,5 @@ export function useCisternStatus(baseUrl, intervalMs = 30000) {
     await fetch()
   }, [baseUrl, fetch])
 
-  return { cistern, refill, refetch: fetch }
+  return { cistern, refill, refetch: fetch, cisternError }
 }

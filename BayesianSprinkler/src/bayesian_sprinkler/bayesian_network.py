@@ -190,14 +190,6 @@ class SmartSprinklerBN:
 
         return float(np.clip(score, 0.01, 0.99))
 
-    def query(self, plant: str, temperature: str, humidity: str,
-              cloud_cover: str, soil_moisture: str, rain_forecast: str) -> float:
-        prob, _ = self.query_with_dose(
-            plant, temperature, humidity, cloud_cover,
-            soil_moisture, rain_forecast,
-        )
-        return prob
-
     def query_with_dose(self, plant: str, temperature: str, humidity: str,
                         cloud_cover: str, soil_moisture: str, rain_forecast: str,
                         soil_value: float | None = None,

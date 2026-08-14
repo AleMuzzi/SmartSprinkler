@@ -1,5 +1,6 @@
 import logging
 import time
+import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
 from threading import Lock
@@ -594,33 +595,35 @@ def _register_routes(app: FastAPI):
 # ── Background jobs ─────────────────────────────────────────────────
 
 def _hourly_poll(st: AppState):
-    temperature_fallback = None
+    errors: list[str] = []
 
     try:
         status = st.esp.get_status()
         _capture_esp_status(st, status)
         raw_temp = float(status["air_temperature"])
-    except Exception:
-        logger.warning("ESP offline — falling back to weather API for temperature")
-        raw_temp = None
-
-    if raw_temp is not None and raw_temp < 0:
-        logger.warning("DHT invalid — falling back to weather API for temperature")
+        if raw_temp < 0:
+            raise ValueError(f"DHT returned invalid temperature {raw_temp}")
+    except Exception as e:
+        errors.append(f"ESP/DHT temperature unavailable: {e}")
         raw_temp = None
 
     if raw_temp is None:
         try:
             wx = st.weather.fetch()
             raw_temp = wx.get("temperature")
-        except Exception:
+        except Exception as e:
+            errors.append(f"weather API temperature unavailable: {e}")
             raw_temp = None
-        logger.warning(
-            "No temperature source available — "
-            "using safe default interval of %d minutes",
-            DEFAULT_INTERVAL,
+
+    if raw_temp is None:
+        tb = traceback.format_exc()
+        logger.error("Hourly poll: no temperature source available — skipping")
+        log_event(
+            "error",
+            "Hourly poll skipped: no temperature source",
+            details="; ".join(errors) + "\n" + tb,
         )
         _reschedule_poll(st, DEFAULT_INTERVAL, None)
-        _log_and_insert(st, {"cloud_cover": "cloudy", "rain_forecast": "no"})
         return
 
     temp_state = _temperature_state(raw_temp, st.config["thresholds"]["temperature"])
@@ -638,10 +641,17 @@ def _hourly_poll(st: AppState):
 
     try:
         wx = st.weather.fetch()
-    except Exception:
-        wx = {"cloud_cover": "cloudy", "rain_forecast": "no"}
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error("Hourly poll: weather fetch failed — skipping snapshot")
+        log_event(
+            "error",
+            "Hourly poll skipped: weather fetch failed",
+            details=f"{e}\n{tb}",
+        )
+        return
 
-    _log_and_insert(st, wx)
+    _log_and_insert(st, wx, status=status)
 
 
 def _temperature_state(temp_celsius: float, thresholds: dict) -> str:
@@ -664,37 +674,73 @@ def _reschedule_poll(st: AppState, interval_minutes: int, temperature: float | N
             _schedule_hourly_poll(st, interval_minutes)
 
 
-def _log_and_insert(st: AppState, wx: dict):
-    try:
-        status = st.esp.get_status()
-        _capture_esp_status(st, status)
-        soil = st.esp.discretize_soil_moisture(float(status["soil_moisture"]))
-        temp = st.esp.discretize_temperature(float(status["air_temperature"]))
-        humid = st.esp.discretize_humidity(float(status["air_humidity"]))
-    except Exception:
-        logger.warning("ESP offline during hourly poll — using weather-only defaults")
-        soil = st.esp.discretize_soil_moisture(0.0)
-        temp = "medium"
-        humid = "medium"
+def _log_and_insert(st: AppState, wx: dict, status: dict | None = None):
+    if status is None:
+        try:
+            status = st.esp.get_status()
+            _capture_esp_status(st, status)
+        except Exception as e:
+            tb = traceback.format_exc()
+            logger.error("Hourly poll: ESP offline — skipping snapshot")
+            log_event(
+                "error",
+                "Hourly poll skipped: ESP offline",
+                details=f"{e}\n{tb}",
+            )
+            return
 
     try:
+        temp = st.esp.discretize_temperature(float(status["air_temperature"]))
+        humid = st.esp.discretize_humidity(float(status["air_humidity"]))
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error("Hourly poll: invalid ESP sensor reading — skipping snapshot")
+        log_event(
+            "error",
+            "Hourly poll skipped: invalid ESP sensor reading",
+            details=f"{e}\n{tb}",
+        )
+        return
+
+    decisions: dict[str, str] = {}
+    try:
         for plant_name in st.config["plants"]:
+            cfg = st.config["plants"][plant_name]
+            sensor_idx = cfg.get("sensor_index", 0)
+            raw_sm = status.get(f"soil_moisture_{sensor_idx}")
+            plant_sm = float(raw_sm) if raw_sm is not None else float(status["soil_moisture"])
+            plant_soil = st.esp.discretize_soil_moisture(plant_sm)
+
+            with st.lock:
+                prob = st.bn.query(
+                    plant=plant_name,
+                    temperature=temp,
+                    humidity=humid,
+                    cloud_cover=wx["cloud_cover"],
+                    soil_moisture=plant_soil,
+                    rain_forecast=wx["rain_forecast"],
+                )
+            need = "yes" if prob >= cfg["threshold"] else "no"
+            decisions[plant_name] = need
             insert_record(
                 plant_type=plant_name,
-                soil_moisture=soil,
+                soil_moisture=plant_soil,
                 air_temperature=temp,
                 air_humidity=humid,
                 cloud_cover=wx["cloud_cover"],
                 rain_forecast=wx["rain_forecast"],
-                need_water="no",
+                need_water=need,
             )
-        logger.info("Hourly poll: logged %d plants (need_water=no)",
-                    len(st.config["plants"]))
+        n_yes = sum(1 for v in decisions.values() if v == "yes")
+        logger.info("Hourly poll: logged %d plants (need_water yes=%d/no=%d)",
+                    len(st.config["plants"]), n_yes, len(decisions) - n_yes)
         log_event("inference", f"Hourly poll: logged {len(st.config['plants'])} plants",
-                  details=f"cloud_cover={wx['cloud_cover']} rain={wx['rain_forecast']}")
-    except Exception:
+                  details=(f"cloud_cover={wx['cloud_cover']} rain={wx['rain_forecast']} "
+                           f"decisions={decisions}"))
+    except Exception as e:
+        tb = traceback.format_exc()
         logger.exception("Hourly poll failed")
-        log_event("error", "Hourly poll failed", details="See server logs for traceback")
+        log_event("error", f"Hourly poll failed: {e}", details=tb)
 
 
 def _inference_cycle(st: AppState):
@@ -702,9 +748,10 @@ def _inference_cycle(st: AppState):
         status = st.esp.get_status()
         _capture_esp_status(st, status)
         _run_inference_with_status(st, status)
-    except Exception:
+    except Exception as e:
+        tb = traceback.format_exc()
         logger.exception("Inference cycle failed")
-        log_event("error", "Inference cycle failed", details="See server logs for traceback")
+        log_event("error", f"Inference cycle failed: {e}", details=tb)
 
 
 # Hard, model-independent floor on watering pulse volume. Any dose the BN
@@ -828,9 +875,15 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
         raw_temp = float(status["air_temperature"])
         raw_humid = float(status["air_humidity"])
         if raw_temp < 0:
-            raw_temp = wx.get("temperature") or 25.0
+            raise ValueError(
+                f"Inference cycle: invalid air_temperature {raw_temp} "
+                f"and no usable fallback (ESP/DHT invalid)"
+            )
         if raw_humid < 0:
-            raw_humid = 50.0
+            raise ValueError(
+                f"Inference cycle: invalid air_humidity {raw_humid} "
+                f"(ESP/DHT invalid)"
+            )
         temp = st.esp.discretize_temperature(raw_temp)
         humid = st.esp.discretize_humidity(raw_humid)
 
@@ -948,7 +1001,8 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                    f"hour_blocked={blocked_by_hour}")
         log_event("inference", f"Inference cycle completed ({len(triggered_plants)} watered)",
                   details=details)
-    except Exception:
+    except Exception as e:
+        tb = traceback.format_exc()
         logger.exception("Inference cycle failed")
-        log_event("error", "Inference cycle failed", details="See server logs for traceback")
+        log_event("error", f"Inference cycle failed: {e}", details=tb)
     return triggered_doses

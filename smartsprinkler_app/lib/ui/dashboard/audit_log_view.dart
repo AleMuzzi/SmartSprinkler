@@ -25,6 +25,7 @@ class _AuditLogViewState extends State<AuditLogView> {
   bool _loading = false;
   bool _downloading = false;
   String? _error;
+  final Set<int> _expandedDetails = {};
 
   @override
   void initState() {
@@ -99,6 +100,9 @@ class _AuditLogViewState extends State<AuditLogView> {
 
   Color _colorForCategory(String category) =>
       _categoryColors[category] ?? Colors.grey.shade700;
+
+  int get _errorCount =>
+      _entries.where((e) => e.category == 'error').length;
 
   String _formatTimestamp(String ts) {
     try {
@@ -188,6 +192,47 @@ class _AuditLogViewState extends State<AuditLogView> {
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Text('⚠️ $_error', style: const TextStyle(color: Colors.red)),
             ),
+          if (_errorCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10.0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFEBEE),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFF44336)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Color(0xFFB71C1C), size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$_errorCount error${_errorCount == 1 ? '' : 's'} in this view',
+                        style: const TextStyle(
+                          color: Color(0xFFB71C1C),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    if (_category != 'error')
+                      TextButton(
+                        onPressed: () {
+                          setState(() => _category = 'error');
+                          _load();
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFB71C1C),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          minimumSize: const Size(0, 32),
+                        ),
+                        child: const Text('Show errors'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           Expanded(
             child: _loading && _entries.isEmpty
                 ? const Center(child: CircularProgressIndicator())
@@ -199,7 +244,12 @@ class _AuditLogViewState extends State<AuditLogView> {
                         itemBuilder: (ctx, i) {
                           final e = _entries[i];
                           final color = _colorForCategory(e.category);
-                          return Padding(
+                          final isError = e.category == 'error';
+                          final details = e.details ?? '';
+                          final long = details.length > 120;
+                          final expanded = _expandedDetails.contains(e.id);
+                          return Container(
+                            color: isError ? const Color(0x14F44336) : null,
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,12 +278,48 @@ class _AuditLogViewState extends State<AuditLogView> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(e.message, style: const TextStyle(fontSize: 14)),
-                                if (e.details != null && e.details!.isNotEmpty)
+                                if (details.isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      e.details!,
-                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontFamily: 'monospace'),
+                                    child: InkWell(
+                                      onTap: long
+                                          ? () => setState(() {
+                                                if (expanded) {
+                                                  _expandedDetails.remove(e.id);
+                                                } else {
+                                                  _expandedDetails.add(e.id);
+                                                }
+                                              })
+                                          : null,
+                                      child: Text(
+                                        long && !expanded ? '${details.substring(0, 120)}…' : details,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isError ? const Color(0xFF8B0000) : Colors.grey.shade700,
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (long)
+                                  GestureDetector(
+                                    onTap: () => setState(() {
+                                      if (expanded) {
+                                        _expandedDetails.remove(e.id);
+                                      } else {
+                                        _expandedDetails.add(e.id);
+                                      }
+                                    }),
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        expanded ? '▲ collapse' : '▼ expand',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.blue.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                     ),
                                   ),
                               ],

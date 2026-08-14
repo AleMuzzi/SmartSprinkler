@@ -26,6 +26,7 @@ export function AuditLog({ initialFilter = '' }) {
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState(null)
   const [count, setCount] = useState(0)
+  const [expandedDetails, setExpandedDetails] = useState({})
 
   const load = async () => {
     setLoading(true)
@@ -74,11 +75,14 @@ export function AuditLog({ initialFilter = '' }) {
     return () => clearInterval(id)
   }, [filter, category])
 
+  const errorCount = entries.filter((e) => e.category === 'error').length
+  const recentErrors = entries.filter((e) => e.category === 'error').slice(0, 5)
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-gray-700 flex items-center gap-2">
-          <span>�</span> Audit Log
+          <span>📋</span> Audit Log
           <span className="text-xs text-gray-400 font-normal">({count} entries)</span>
         </h3>
         <div className="flex items-center gap-2">
@@ -98,6 +102,25 @@ export function AuditLog({ initialFilter = '' }) {
           </button>
         </div>
       </div>
+
+      {errorCount > 0 && (
+        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-red-600 font-semibold text-sm">⚠️ {errorCount} error{errorCount === 1 ? '' : 's'} in this view</span>
+            <button
+              onClick={() => setCategory('error')}
+              className="text-xs px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600"
+            >
+              View errors
+            </button>
+          </div>
+          {category !== 'error' && recentErrors.slice(0, 2).map((e) => (
+            <div key={e.id} className="text-xs text-red-700 font-mono break-all">
+              • {e.message}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
         <input
@@ -129,20 +152,35 @@ export function AuditLog({ initialFilter = '' }) {
         {entries.length === 0 && !loading && (
           <div className="text-gray-400 text-sm text-center py-8">No log entries</div>
         )}
-        {entries.map((entry) => (
-          <div key={entry.id} className="py-2 hover:bg-gray-50 px-2 -mx-2 rounded">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[entry.category] || 'bg-gray-100 text-gray-700'}`}>
-                {entry.category}
-              </span>
-              <span className="text-xs text-gray-400">{formatTimestamp(entry.timestamp)}</span>
+        {entries.map((entry) => {
+          const expanded = expandedDetails[entry.id]
+          const details = entry.details || ''
+          const long = details.length > 120
+          return (
+            <div key={entry.id} className={`py-2 hover:bg-gray-50 px-2 -mx-2 rounded ${entry.category === 'error' ? 'bg-red-50/50' : ''}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[entry.category] || 'bg-gray-100 text-gray-700'}`}>
+                  {entry.category}
+                </span>
+                <span className="text-xs text-gray-400">{formatTimestamp(entry.timestamp)}</span>
+              </div>
+              <div className="text-sm text-gray-700">{entry.message}</div>
+              {details && (
+                <div className="text-xs text-gray-500 mt-0.5 font-mono break-all">
+                  {long && !expanded ? `${details.slice(0, 120)}… ` : details}
+                  {long && (
+                    <button
+                      onClick={() => setExpandedDetails((d) => ({ ...d, [entry.id]: !expanded }))}
+                      className="text-xs text-blue-500 hover:underline ml-1"
+                    >
+                      {expanded ? '▲ collapse' : '▼ expand'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="text-sm text-gray-700">{entry.message}</div>
-            {entry.details && (
-              <div className="text-xs text-gray-500 mt-0.5 font-mono break-all">{entry.details}</div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

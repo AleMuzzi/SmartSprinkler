@@ -25,7 +25,7 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const { espData, espHealthy, waterLowAlert, error, loading } = useEspData()
   const { plantStatuses } = usePlantStatuses()
-  const { cistern, refill: refillCistern, refetch: refetchCistern } = useCisternStatus(getSettings().bayesianUrl)
+  const { cistern, refill: refillCistern, refetch: refetchCistern, cisternError } = useCisternStatus(getSettings().bayesianUrl)
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ message: msg, type })
@@ -102,6 +102,7 @@ export default function App() {
               capacityMl={cistern.capacityMl}
               lowAlert={cistern.waterLowAlert}
               onRefill={handleCisternRefill}
+              error={cisternError}
             />
 
             {/* Bayesian insights */}
