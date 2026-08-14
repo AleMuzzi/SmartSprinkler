@@ -207,10 +207,11 @@ void loop() {
 }
 
 static void sendCorsJson(MongooseHttpServerRequest *req, int code, const char *content) {
-    auto *resp = req->beginResponse();
+    auto *resp = req->beginResponseStream();
+    resp->setCode(code);
     resp->addHeader("Access-Control-Allow-Origin", "*");
     resp->setContentType("application/json");
-    resp->setContent(content);
+    resp->write((const uint8_t*)content, strlen(content));
     req->send(resp);
 }
 
