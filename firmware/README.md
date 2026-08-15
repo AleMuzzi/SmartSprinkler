@@ -118,20 +118,21 @@ graph TB
 
 The SG90 servo rotates a 3D-printed water path selector (Instructables: *Water Path Selector*) to direct water from a single input to one of 4 output ports. Each output connects to a different plant's drip line.
 
-The servo position (angle) selects the active output (based on 3D-printed Water Path Selector from Instructables):
+The servo position (angle) selects the active output (based on 3D-printed Water Path Selector from Instructables). The ESP maps each plant to a position (see `plant_to_servo` in `src/esp32/main.cpp`):
 
-| Plant            | Position | Angle (18° step) |
-|------------------|----------|-------------------|
-| Habanero        | 0        | 52°              |
-| Naga Morich     | 1        | 70°              |
-| Carolina Reaper | 2        | 88°              |
-| Rosmarino       | 3        | 106°             |
+| Plant            | Position | Angle (start 5°, step 19°) |
+|------------------|----------|----------------------------|
+| Rosmarino       | 1        | 24°                        |
+| Carolina Reaper | 2        | 43°                        |
+| Naga Morich     | 3        | 62°                        |
+| Habanero        | 4        | 81°                        |
+| (unused)        | 0, 5–9   | —                          |
 
-The step angle (`ROTARY_DELTA_DEG = 18.0°`, start `ROTARY_START_DEG = 52.0°`) can be adjusted in `src/esp32/main.cpp` once the physical positioning is calibrated. After moving to a position, the servo holds that position indefinitely (no power draw after reaching target).
+The step angle (`ROTARY_DELTA_DEG = 19.0°`, start `ROTARY_START_DEG = 5.0°`) can be adjusted in `src/esp32/main.cpp` once the physical positioning is calibrated. After moving to a position, the servo holds that position indefinitely (no power draw after reaching target).
 
 ### Startup Calibration
 
-On boot, the firmware runs a calibration sweep: it visits each position sequentially, waits 800 ms, reads back the actual pulse width, and verifies the servo reached the target within ±100 µs tolerance. If any position fails, `rotary_position` in `/status` reports `"uncalibrated"` and the system falls back to software-only position tracking. Adjust `ROTARY_DELTA_DEG` if the servo doesn't reach all positions accurately.
+On boot, the firmware runs a non-blocking calibration sweep: it visits each position sequentially, waits 800 ms, reads back the actual pulse width, and verifies the servo reached the target within ±100 µs tolerance. The sweep runs as a state machine in the main loop, so the HTTP API and sensor polling stay responsive during calibration (`/command` returns `400` until it finishes). If any position fails, `rotary_position` in `/status` reports `"uncalibrated"` and the system falls back to software-only position tracking. Adjust `ROTARY_DELTA_DEG` if the servo doesn't reach all positions accurately.
 
 ## Arduino Nano — Sensor Slave
 
@@ -296,7 +297,7 @@ pio device monitor -e nano  # serial console at 9600 baud (debug only — D3/D4 
 
 ## WiFi configuration
 
-WiFi credentials can be provided through a local, gitignored file and (optionally) an encrypted NVS setting on the device.
+WiFi credentials are configured via the gitignored local file `firmware/include/wifi_secrets.h` — see [WiFi configuration](#wifi-configuration).
 
 ### Local file (recommended)
 
@@ -325,13 +326,3 @@ WIFI MyWiFi MyPassword
 ```
 
 The new credentials are persisted to NVS and the ESP reconnects immediately. NVS values always take precedence over the local file.
-
-## Unused / Spare Components
-
-- **74HC4051 (×3)** — 8-channel analog muxes. Not needed; the Arduino Nano provides 4 dedicated ADC channels.
-- **AMS1117 (×4 remaining)** — 5→3.3V regulators. Now unused since the Nano reads sensors directly from its 5V rail.
-- **GPIO 2** — freed up (was DHT22 DATA). Available for future use.
-- **GPIO 4** — freed up (was ADS1115 SCL). Available for future use.
-- **GPIO 16** — free, previously used for valve relays 2 and 3.
-
-WiFi credentials are configured via the gitignored local file `firmware/include/wifi_secrets.h` — see [WiFi configuration](#wifi-configuration).

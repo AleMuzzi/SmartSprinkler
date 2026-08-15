@@ -126,17 +126,23 @@ score  =  ───────────────────────�
 
 ### NeedWater
 
-A second weighted score combines evaporation risk, soil moisture, and plant base need. Rain forecast acts as a gate:
+A weighted score combines plant base need, evaporation risk, and soil moisture:
 
 ```
-score  =  base_need × 0.35 + evap_score × 0.25 + moisture_score × 0.40
+score  =  base_need × 0.20 + evap_score × 0.30 + moisture_score × 0.50
 
 if rain_forecast == "yes":
-    if soil == "dry" and plant is chili (habanero/naga_morich/carolina_reaper):
-        score ×= 0.4       # moderate penalty — still water thirsty plants
-    else:
-        score ×= 0.05      # heavy penalty — rain is coming
+    score ×= 0.85
 ```
+
+| Input | Weights |
+|---|---|
+| `base_need` | 0.20 |
+| `evap_score` (low=0, med=0.5, high=1) | 0.30 |
+| `moisture_score` (dry=1, moist=0.3, wet=0) | 0.50 |
+| `RainForecast = "yes"` | × 0.85 |
+
+Soil moisture dominates (50%). Rain is a mild 15% dampener: it tips borderline cases under the threshold but does **not** override a dry-soil/high-evaporation need. The score is clipped to `[0.01, 0.99]` before being emitted as `P(NeedWater=yes)`.
 
 The decision threshold per plant is set in `config.yaml`:
 
@@ -161,16 +167,28 @@ Starts a FastAPI server (default `http://0.0.0.0:8080`) with:
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/health` | GET | Health check |
-| `/api/plants/status` | GET | Returns per-plant `probability_of_need` (0–1 scale) + weather context |
+| `/api/dashboard` | GET | Combined ESP telemetry + per-plant need + weather in one request |
+| `/api/plants/status` | GET | Returns per-plant `probability_of_need` (0–1 scale) + evidence breakdown; uses each plant's own `sensor_index` soil reading |
 | `/api/weather/status` | GET | Returns cached weather data from Open-Meteo (cloud cover, rain forecast, temperature, humidity) |
+| `/api/esp/status` | GET | Most recent ESP `/status` snapshot the server has captured (no extra polling — apps should call this instead of hitting the ESP) |
 | `/api/plants/manual-water` | POST | Log a human-triggered watering event (`need_water=yes`); then triggers ESP via `POST /command` |
+| `/api/cistern` | GET | Current cistern level estimate (`level_ml`, `capacity_ml`, `level_pct`, `water_low_alert`) |
+| `/api/cistern/refill` | POST | Force the cistern estimate back to full — mirrors the automatic on→off transition of the `water_low_alert` sensor |
+| `/api/audit-log` | GET | Audit log entries (newest first), filterable by `filter` / `category`, with `limit` |
+| `/api/audit-log` | DELETE | Clear all audit log entries |
+| `/api/audit-log/export` | GET | Download the audit log as CSV |
 
 ### Background jobs (APScheduler)
 
 | Job | Interval | What it does |
 |---|---|---|
-| **Hourly poll** | 1 hour | Reads ESP sensors + weather API, logs row to SQLite with `need_water=no` |
+| **Hourly poll** | 1 hour | Reads ESP sensors + weather API, runs the BN, logs the true per-plant decision (`need_water=yes/no`) to SQLite |
 | **Inference cycle** | `poll_interval` (default 120 s) | Queries the BN for each plant; waters if `P(need water) > threshold` |
+
+### Sensor routing & error handling
+
+- Each plant is mapped to a soil sensor via `sensor_index` in `config.yaml`; the per-plant soil reading feeds the BN evidence.
+- The server **never fabricates sensor/weather values**. If the ESP is offline or a reading is invalid, an `error` audit entry (with traceback) is logged and the cycle is skipped — no misleading rows.
 
 ## Data & refinement pipeline
 
@@ -182,7 +200,11 @@ Sensor history is stored in `data/sprinkler.db` (SQLite, WAL mode):
 sensor_history (id, timestamp, plant_type, soil_moisture,
                 air_temperature, air_humidity, cloud_cover,
                 rain_forecast, need_water)
+
+audit_log (id, timestamp, category, message, details)
 ```
+
+The `audit_log` table records every inference, ESP command, water-level alert, and error (with traceback) so failures are greppable and exportable via `/api/audit-log/export`.
 
 ### Refinement script
 
@@ -211,6 +233,15 @@ When the user triggers watering via the web frontend (Control tab) or Flutter ap
 - **Direct ESP (toggle OFF)**: Client sends `POST /command` directly to ESP (bypasses Bayesian server — used when server is offline)
 
 The web frontend's Control tab exposes this choice explicitly via the **Direct ESP / Via Bayesian** toggle. Configure URLs in the **Settings** tab (persisted to `localStorage`).
+
+## Cistern level tracking
+
+The server maintains an estimate of the water tank (`cistern_capacity_ml` in `config.yaml`, default 30000 mL) and exposes it via `GET /api/cistern`. When the ESP's `water_low_alert` sensor transitions:
+
+- **on → off** (tank refilled): the estimate is automatically reset to full.
+- **off → on** (tank empty): the alert is stored and manual watering is blocked unless `force=true`.
+
+`POST /api/cistern/refill` forces the estimate back to full for ops/testing without physically refilling; it also logs the action to the audit log.
 
 ## Requirements
 
@@ -243,8 +274,11 @@ docker compose up web-frontend
 
 | Tab | Description |
 |---|---|
-| **Dashboard** | Real-time ESP telemetry (temp, humidity, soil moisture, pump status), weather context from Open-Meteo, per-plant Bayesian need probabilities |
+| **Dashboard** | Real-time ESP telemetry (temp, humidity, soil moisture, pump status), cistern level widget, weather context from Open-Meteo, per-plant Bayesian need probabilities |
 | **Control** | Plant selector, Direct ESP / Via Bayesian routing toggle, Start/Stop buttons, dispense amount (ml) presets |
+| **Simulation** | Interactive simulation of the inference cycle over configurable weather/soil scenarios |
+| **Camera** | ESP32-CAM live video stream |
+| **Logs** | Audit log with error-count banner, "view errors" filter, and expandable detail rows (tracebacks) |
 | **Settings** | ESP32 URL, Bayesian Server URL, polling interval — persisted to browser `localStorage` |
 
 ### CORS

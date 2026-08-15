@@ -57,11 +57,12 @@ PlatformIO project running on an ESP32-CAM. Exposes two HTTP servers:
 
 ### [`smartsprinkler_app/`](smartsprinkler_app) — Flutter mobile app
 
-ViewModel-based app that polls `GET /status` every 2s and lets the user:
+ViewModel-based app with 4 tabs (Dashboard, Camera, Logs, System). It polls the Bayesian server's `/api/dashboard` (the ESP's latest captured snapshot, no direct ESP polling) and lets the user:
 
 - Select a plant from a dropdown
 - Start/Stop irrigation via `POST /command` directly to the ESP, **or** route through the Bayesian server (toggle switch)
-- Configure both the ESP URL and the Bayesian server URL in Settings
+- Monitor the cistern level, view the audit log (with errors), watch the live ESP camera, and receive water-low notifications
+- Configure internal (LAN) and external URL pairs per service in Settings — the app auto-switches based on the active Wi-Fi SSID
 
 ### [`BayesianSprinkler/`](BayesianSprinkler) — Python Bayesian server
 
@@ -69,9 +70,11 @@ FastAPI server that runs the autonomous decision loop:
 
 - **Bayesian network** with 8 nodes (`AirTemperature`, `AirHumidity`, `CloudCover` → `EvaporationRisk` → `NeedWater` + `SoilMoisture`, `PlantType`, `RainForecast`). Intermediate `EvaporationRisk` node keeps CPTs compact (18 + 72 entries).
 - **APScheduler** runs two background jobs:
-  - *Hourly poll* — reads sensors + weather, logs baseline (`need_water=no`) to SQLite
+  - *Hourly poll* — reads sensors + weather, logs the BN decision (`need_water=yes/no` per plant) to SQLite
   - *Inference cycle* — queries the BN every `poll_interval` seconds and waters plants that exceed their probability threshold
 - **`POST /api/plants/manual-water`** — on-demand endpoint called by the mobile app: snapshots current conditions with `need_water=yes`, then triggers the ESP relay
+- **Cistern tracking** — the server tracks the water tank level (`/api/cistern`), deduces refills from the ESP `water_low_alert` sensor, and provides `POST /api/cistern/refill` for manual override
+- **Audit log** — every inference, command, and error is logged with a traceback (`/api/audit-log`, `GET`/`DELETE`/CSV export); errors are surfaced in the web UI instead of silently swallowed
 - **`refine_weights.py`** — Bayesian parameter estimation with Dirichlet prior, blends expert CPTs with collected data to refine the model over time
 
 ## Data flow
@@ -105,6 +108,16 @@ FastAPI server that runs the autonomous decision loop:
               │  (cron weekly)  │
               └─────────────────┘
 ```
+
+## Testing
+
+```bash
+cd BayesianSprinkler
+uv sync
+uv run pytest          # full suite: BN, API, ESP integration, firmware API contract
+```
+
+The firmware API contract tests (`tests/test_firmware_api_contract.py`) emulate Mongoose's chunked HTTP send against the exact `/status`, `/health`, and `/command` schemas, so the server client fails loudly if the ESP ever regresses to a truncated/invalid JSON body.
 
 ## Quick start
 
