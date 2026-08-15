@@ -54,6 +54,8 @@ PlatformIO project running on an ESP32-CAM. Exposes two HTTP servers:
 - **Smart Sprinkler API** (Mongoose, port 80):
   - `GET /status` — returns `air_temperature`, `air_humidity`, `soil_moisture`, `water_pump`
   - `POST /command` — accepts `{"action": "START|STOP|DISPENSE_SPECIFIC_AMOUNT", "target": "PLANT_NAME", "amount": <ml>}` and toggles the pump relay on GPIO 12
+  - `GET /health` — `{"status":"ok", "version":"<FW_VERSION>"}` (auto-incremented per build)
+  - `POST /update` — OTA firmware upload (`multipart/form-data`, `update=firmware.bin`)
 
 ### [`smartsprinkler_app/`](smartsprinkler_app) — Flutter mobile app
 
@@ -74,6 +76,7 @@ FastAPI server that runs the autonomous decision loop:
 - **`POST /api/plants/manual-water`** — on-demand endpoint called by the mobile app: snapshots current conditions with `need_water=yes`, then triggers the ESP relay
 - **Cistern tracking** — the server tracks the water tank level (`/api/cistern`), deduces refills from the ESP `water_low_alert` sensor, and provides `POST /api/cistern/refill` for manual override
 - **Audit log** — every inference, command, and error is logged with a traceback (`/api/audit-log`, `GET`/`DELETE`/CSV export); errors are surfaced in the web UI instead of silently swallowed
+- **OTA relay** — `POST /api/esp/ota` streams a firmware `.bin` upload on to the ESP's `/update` (with audit logging), and `GET /api/esp/version` relays the installed firmware version read from the ESP `/health` endpoint
 - **`refine_weights.py`** — Bayesian parameter estimation with Dirichlet prior, blends expert CPTs with collected data to refine the model over time
 
 ## Data flow

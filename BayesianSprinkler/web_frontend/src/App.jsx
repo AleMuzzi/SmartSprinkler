@@ -4,6 +4,7 @@ import { TelemetryPanel } from './components/TelemetryPanel.jsx'
 import { BayesianInsights } from './components/BayesianInsights.jsx'
 import { ControlPanel } from './components/ControlPanel.jsx'
 import { SettingsPanel } from './components/SettingsPanel.jsx'
+import { FirmwareUpdatePanel } from './components/FirmwareUpdatePanel.jsx'
 import { CameraPanel } from './components/CameraPanel.jsx'
 import { AuditLog } from './components/AuditLog.jsx'
 import { HealthBar } from './components/StatusBadge.jsx'
@@ -129,7 +130,10 @@ export default function App() {
         )}
 
         {activeTab === 'settings' && (
-          <SettingsPanel onSave={() => showToast('Settings saved', 'success')} />
+          <div className="grid md:grid-cols-2 gap-6">
+            <SettingsPanel onSave={() => showToast('Settings saved', 'success')} />
+            <FirmwareUpdatePanel onMessage={showToast} />
+          </div>
         )}
       </main>
 

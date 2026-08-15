@@ -43,6 +43,8 @@ STATUS_FIELDS = {
     "camera_url": "192.168.1.10:81/stream",
 }
 
+HEALTH_VERSION = "1.0.0.7"
+
 
 def _chunked_send(sock, payload, chunk_size=17):
     """Write a body in small chunks with a flush in between, exactly like
@@ -93,7 +95,10 @@ class FirmwareMock:
             body = json.dumps(STATUS_FIELDS)
             self._respond(conn, 200, "application/json", body)
         elif path == "/health":
-            self._respond(conn, 200, "application/json", '{"status":"ok"}')
+            self._respond(
+                conn, 200, "application/json",
+                f'{{"status":"ok","version":"{HEALTH_VERSION}"}}',
+            )
         elif path.startswith("/command"):
             content_length = 0
             for hdr in data.split(b"\r\n")[1:]:
@@ -200,7 +205,10 @@ class TestHealthEndpoint:
         port = client.base_url.rsplit(":", 1)[1]
         resp = requests.get(f"http://127.0.0.1:{port}/health", timeout=5)
         assert resp.status_code == 200
-        assert resp.json() == {"status": "ok"}
+        assert resp.json() == {"status": "ok", "version": HEALTH_VERSION}
+
+    def test_health_reports_firmware_version(self, client):
+        assert client.get_firmware_version() == HEALTH_VERSION
 
 
 class TestCommandEndpoint:

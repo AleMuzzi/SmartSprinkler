@@ -8,7 +8,7 @@ from threading import Lock
 import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -45,6 +45,10 @@ class AppState:
 
 
 state = AppState()
+
+# Maximum accepted firmware image size for POST /api/esp/ota. Slightly above
+# the ~1.75MB OTA slot so a full valid image always passes.
+OTA_MAX_BYTES = 1_800_000
 
 
 # ── Request / Response models ────────────────────────────────────────
@@ -263,6 +267,44 @@ def _register_routes(app: FastAPI):
             if state._esp_status_updated_at else None
         )
         return payload
+
+    @app.get(
+        "/api/esp/version",
+        tags=["ESP"],
+        summary="ESP firmware version (relayed from GET /health)",
+        responses={
+            200: {"description": "Firmware version as reported by the ESP"},
+        },
+    )
+    def esp_firmware_version():
+        version = state.esp.get_firmware_version()
+        return {"version": version if version is not None else "-"}
+
+    @app.post(
+        "/api/esp/ota",
+        tags=["ESP"],
+        summary="Upload a firmware image and stream it to the ESP",
+        responses={
+            200: {"description": "Firmware flashed successfully"},
+            400: {"description": "Invalid file (extension or size)"},
+            502: {"description": "ESP unreachable or upload failed"},
+        },
+    )
+    def esp_ota(file: UploadFile = File(...)):
+        if not (file.filename or "").lower().endswith(".bin"):
+            raise HTTPException(400, "Expected a .bin firmware image")
+        if file.size and file.size > OTA_MAX_BYTES:
+            raise HTTPException(400, f"Firmware too large (max {OTA_MAX_BYTES} bytes)")
+        try:
+            state.esp.ota_update(file.filename or "firmware.bin", file.file)
+        except Exception as e:
+            logger.error("OTA upload to ESP failed: %s", e)
+            log_event("ota", "Firmware update failed",
+                      details=f"filename={file.filename} error={e}")
+            raise HTTPException(502, f"ESP unreachable or update failed: {e}")
+        log_event("ota", "Firmware update completed",
+                  details=f"filename={file.filename}")
+        return {"status": "ok", "filename": file.filename}
 
     @app.post(
         "/api/plants/manual-water",

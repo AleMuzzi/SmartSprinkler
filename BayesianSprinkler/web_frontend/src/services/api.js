@@ -49,6 +49,45 @@ export async function fetchEspHealth() {
   return res.json()
 }
 
+export async function fetchFirmwareVersion() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/esp/version`)
+  if (!res.ok) throw new Error(`Firmware version fetch failed: ${res.status}`)
+  const data = await res.json()
+  return data.version || '-'
+}
+
+export function uploadFirmware(file, onProgress) {
+  const { bayesianUrl } = getSettings()
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    const form = new FormData()
+    form.append('file', file)
+
+    xhr.open('POST', `${bayesianUrl}/api/esp/ota`)
+    xhr.upload.addEventListener('progress', (evt) => {
+      if (evt.lengthComputable && onProgress) {
+        onProgress(Math.round((evt.loaded / evt.total) * 100))
+      }
+    })
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100)
+        resolve(JSON.parse(xhr.responseText || '{"status":"ok"}'))
+      } else {
+        let msg = `Upload failed: ${xhr.status}`
+        try {
+          const body = JSON.parse(xhr.responseText)
+          if (body.detail) msg = body.detail
+        } catch (e) { /* keep default */ }
+        reject(new Error(msg))
+      }
+    })
+    xhr.addEventListener('error', () => reject(new Error('Network error during upload')))
+    xhr.send(form)
+  })
+}
+
 export async function sendEspCommand(action, target, extra = {}) {
   const { espUrl } = getSettings()
   const body = { action, target }

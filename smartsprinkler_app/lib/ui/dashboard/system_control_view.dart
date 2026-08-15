@@ -79,6 +79,26 @@ class _ConnectivityCard extends StatelessWidget {
             status: vm.espStatus,
             onRefresh: vm.fetchEspStatus,
           ),
+          if (vm.espStatus == ConnectivityStatus.connected &&
+              vm.espFirmwareVersion != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 54, top: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.memory, size: 14, color: Color(0xFF718096)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Firmware version: ${vm.espFirmwareVersion}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF718096),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 14),
           _ConnectionRow(
             label: 'Bayesian Server',

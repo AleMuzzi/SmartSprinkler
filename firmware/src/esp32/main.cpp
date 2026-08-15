@@ -23,6 +23,13 @@
 #include <Preferences.h>
 #include <esp_task_wdt.h>
 
+#if __has_include("fw_version.h")
+#include "fw_version.h"
+#endif
+#ifndef FW_VERSION
+#define FW_VERSION "0.0.0"
+#endif
+
 #define PIN_PUMP_RELAY 12
 #define PIN_ROTARY_SERVO 13
 
@@ -172,6 +179,10 @@ void setup() {
 
     command_manager.init();
     setup_command_routes();
+    command_manager.setup_ota();
+
+    Serial.print("Smart Sprinkler firmware ");
+    Serial.println(FW_VERSION);
 
     Serial.println("\n\nSystem Fully Initialized!");
     Serial.println("-------------------------------");
@@ -220,7 +231,7 @@ void setup_command_routes() {
                 .http_method = HTTP_GET,
                 .from_json = nullptr,
                 .handler = [](MongooseHttpServerRequest *req, const std::shared_ptr<ICanBeDeserialized>& command) {
-                    sendCorsJson(req, 200, R"({"status":"ok"})");
+                    sendCorsJson(req, 200, (String(R"({"status":"ok","version":")") + FW_VERSION + "\"}").c_str());
                 }
             });
     routes.put("/water_alert", Route{

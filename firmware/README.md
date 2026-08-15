@@ -254,7 +254,57 @@ Returns current sensor readings, rotary selector position, and active plant:
 
 ### `GET /health`
 
-Returns `{"status":"ok"}`.
+Returns `{"status":"ok", "version":"<FW_VERSION>"}` where `FW_VERSION` is the automatically generated per-build firmware version (see [Firmware versioning](#firmware-versioning) below).
+
+## Firmware versioning
+
+Each build gets a monotonically increasing firmware version, exposed through the `/health` endpoint.
+
+- The base version lives in the committed file `firmware/version.txt` (e.g. `1.0.0`).
+- A per-build counter lives in `firmware/.build_count` (gitignored) and is incremented **once per successful build** of the `esp32` env.
+- The result (`<base>.<counter>`, e.g. `1.0.0.7`) is written by `firmware/extra_script.py` into the generated, gitignored header `firmware/src/esp32/fw_version.h` (`#define FW_VERSION "..."`) right before linking, via `env.AddPreAction("$BUILD_DIR/$PROGNAME$PROGSUFFIX", ...)`. The counter bump is bound to that link action so `pio run -t clean`, `pio device monitor`, etc. never advance the version.
+- If the header is missing (e.g. freshly cloned checkout), `src/esp32/main.cpp` falls back to `FW_VERSION "0.0.0"`.
+- `GET /health` embeds the version so any client (the Flutter app, the Bayesian server relay, `curl`) can read the running firmware version from a single well-known endpoint.
+
+## Over-the-air (OTA) firmware updates
+
+The firmware supports flashing a new firmware image over HTTP, no USB cable needed. Because the existing subsystem controls a water pump, the OTA route is reachable but intentionally requires deliberate action: it never triggers spontaneously.
+
+### Partition layout
+
+`firmware/app4MB_ota.csv` ships two OTA application slots on the 4MB flash so an
+update can be written to the inactive slot while the active one keeps running:
+
+```
+app0, app, ota_0, 0x10000, 0x1C0000
+app1, app, ota_1, 0x1D0000, 0x1C0000
+```
+
+Each slot is 1,792KB (~1.75MB). The AI Thinker ESP32-CAM has **4MB flash**
+(the board JSON already ships `flash_size = 4MB`, and PlatformIO is told the
+same via `board_upload.flash_size = 4MB`); a dual-slot layout must fit within
+`0x400000`. Never advertise more flash than the chip actually has or the
+bootloader refuses to boot (`Detected size(4096k) smaller than ... 8192k`).
+
+**One-time action:** flashing this layout (or any firmware built from it) for the very first time on an ESP... requires a USB upload:
+
+```bash
+pio run --target upload -e esp32
+```
+
+After that, every subsequent update can go over the air.
+
+### `POST /update`
+
+Streams a `multipart/form-data` firmware upload (single file part named `update`) into the inactive OTA slot.
+
+```bash
+curl -X POST http://192.168.1.10/update -F "update=@firmware.bin"
+```
+
+- Success replies `200` `OK` and the ESP reboots into the new image.
+- On failure the device replies `500` with the underlying `Update` error and keeps running on the current firmware.
+- The handler streams bytes directly to flash in Mongoose upload events (`MG_ENABLE_HTTP_STREAMING_MULTIPART`), so up to ~1.7 MB firmware bodies are never buffered in RAM. `esp_task_wdt_reset()` is called during the transfer so the watchdog doesn't trip mid-flash. It is implemented in `CommandManager::setup_ota()` (`src/services/CommandManager.cpp`). Images are validated against `OTA_MAX_BYTES = 1_800_000` on the FastAPI relay (`POST /api/esp/ota`).
 
 ## Targets (`Target` enum)
 

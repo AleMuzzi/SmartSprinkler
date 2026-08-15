@@ -5,6 +5,8 @@
 #include "CommandManager.h"
 
 #include <ArduinoJson.h>
+#include <Update.h>
+#include <esp_task_wdt.h>
 
 #include "MongooseCore.h"
 #include "model/command.h"
@@ -77,4 +79,62 @@ void CommandManager::setup_routes(const Hashtable<String, Route>& routes) {
             }
         });
     }
+}
+
+bool ota_completed = false;
+size_t ota_received_bytes = 0;
+
+static void ota_write_error(MongooseHttpServerRequest *req) {
+    auto *resp = req->beginResponseStream();
+    resp->setCode(500);
+    resp->setContentType("text/plain");
+    resp->printf("Firmware update failed: %d", Update.getError());
+    req->send(resp);
+    Update.printError(Serial);
+}
+
+void CommandManager::setup_ota() {
+    Serial.println("Setting up OTA route: /update");
+
+    this->server.on("/update", HTTP_POST)
+        ->onRequest([](MongooseHttpServerRequest *req) {
+            ota_completed = false;
+            ota_received_bytes = 0;
+        })
+        ->onUpload([](MongooseHttpServerRequest *req, int ev, MongooseString filename,
+                      uint64_t index, uint8_t *data, size_t len) {
+            if (ev == MG_EV_HTTP_PART_BEGIN) {
+                Serial.printf("OTA start: %s\n", filename.c_str());
+                if (!Update.begin()) {
+                    ota_write_error(req);
+                }
+            }
+
+            if (!Update.hasError()) {
+                esp_task_wdt_reset();
+                if (Update.write(data, len) != len) {
+                    ota_write_error(req);
+                }
+                ota_received_bytes += len;
+            }
+
+            if (ev == MG_EV_HTTP_PART_END) {
+                Serial.printf("OTA data finished (%u B)\n", ota_received_bytes);
+                if (Update.end(true)) {
+                    Serial.printf("OTA success: %u B\n", ota_received_bytes);
+                    req->send(200, "text/plain", "OK");
+                    ota_completed = true;
+                } else {
+                    ota_write_error(req);
+                }
+            }
+
+            return len;
+        })
+        ->onClose([](MongooseHttpServerRequest *req) {
+            if (ota_completed) {
+                Serial.println("OTA complete, rebooting...");
+                ESP.restart();
+            }
+        });
 }

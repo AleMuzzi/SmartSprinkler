@@ -78,3 +78,5 @@ The Bayesian server (`FastAPI`) has `CORSMiddleware(allow_origins=["*"])` enable
 | Refill cistern | `{bayesianUrl}/api/cistern/refill` | POST | — |
 | Audit log | `{bayesianUrl}/api/audit-log` | GET | `?filter=&category=&limit=` |
 | Export audit log | `{bayesianUrl}/api/audit-log/export` | GET | — |
+| Firmware version (relay) | `{bayesianUrl}/api/esp/version` | GET | — |
+| Upload firmware (relay) | `{bayesianUrl}/api/esp/ota` | POST | `multipart` file `.bin` |

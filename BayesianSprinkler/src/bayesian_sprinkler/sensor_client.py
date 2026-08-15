@@ -57,6 +57,52 @@ class ESP32Client:
     def stop_watering(self, target: str) -> dict:
         return self.send_command("STOP", target)
 
+    def get_firmware_version(self) -> str | None:
+        """Read the firmware version reported by the ESP ``/health`` endpoint.
+
+        The version lives inside the ``version`` field of the health payload
+        (``{"status":"ok","version":"1.0.0.5"}``). Returns ``None`` when the
+        ESP is unreachable or the payload is missing/lacks the field — the
+        UI falls back to "unknown" rather than erroring out.
+        """
+        try:
+            resp = requests.get(f"{self.base_url}/health", timeout=5)
+            resp.raise_for_status()
+        except Exception:
+            logger.warning("Failed to read firmware version from ESP (%s)", self.base_url)
+            return None
+        try:
+            payload = resp.json()
+        except ValueError:
+            logger.error("ESP32 returned invalid JSON on /health: %s", resp.text)
+            return None
+        version = payload.get("version")
+        if not isinstance(version, str) or not version.strip():
+            return None
+        return version.strip()
+
+    def ota_update(self, filename: str, fileobj, timeout: float = 120.0) -> dict:
+        """Stream a firmware image to the ESP ``/update`` endpoint.
+
+        The ESP's OTA handler consumes ``multipart/form-data`` uploads with a
+        single file part named ``update``. The whole body is streamed in
+        chunks by ``requests`` so we never buffer the (up to ~3 MB) binary
+        blobs in memory. Raises on non-2xx responses.
+        """
+        logger.info("Starting OTA update on %s (%s)", self.base_url, filename)
+        try:
+            resp = requests.post(
+                f"{self.base_url}/update",
+                files={"update": (filename, fileobj, "application/octet-stream")},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error("OTA update to %s failed: %s", self.base_url, e)
+            raise
+        logger.info("OTA update to %s completed: %d", self.base_url, resp.status_code)
+        return {"status": "ok", "code": resp.status_code, "body": resp.text}
+
 
 class WeatherClient:
     def __init__(self, latitude: float, longitude: float,

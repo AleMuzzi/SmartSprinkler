@@ -113,6 +113,55 @@ class TestESP32Client:
         )
         assert result["status"] == "ok"
 
+    @patch("bayesian_sprinkler.sensor_client.requests.get")
+    def test_get_firmware_version(self, mock_get, esp_client):
+        mock_get.return_value = Mock(status_code=200)
+        mock_get.return_value.json.return_value = {"status": "ok", "version": "1.0.0.5"}
+        assert esp_client.get_firmware_version() == "1.0.0.5"
+        mock_get.assert_called_once_with("http://192.168.1.10/health", timeout=5)
+
+    @patch("bayesian_sprinkler.sensor_client.requests.get")
+    def test_get_firmware_version_missing_field(self, mock_get, esp_client):
+        mock_get.return_value = Mock(status_code=200)
+        mock_get.return_value.json.return_value = {"status": "ok"}
+        assert esp_client.get_firmware_version() is None
+
+    @patch("bayesian_sprinkler.sensor_client.requests.get")
+    def test_get_firmware_version_invalid_json(self, mock_get, esp_client):
+        mock_get.return_value = Mock(status_code=200)
+        mock_get.return_value.json.side_effect = ValueError("No JSON object")
+        assert esp_client.get_firmware_version() is None
+
+    @patch("bayesian_sprinkler.sensor_client.requests.get")
+    def test_get_firmware_version_unreachable(self, mock_get, esp_client):
+        mock_get.side_effect = Exception("Connection error")
+        assert esp_client.get_firmware_version() is None
+
+    @patch("bayesian_sprinkler.sensor_client.requests.post")
+    def test_ota_update(self, mock_post, esp_client):
+        mock_post.return_value = Mock(status_code=200)
+        mock_post.return_value.text = "OK"
+        firmware_file = Mock()
+        result = esp_client.ota_update("firmware.bin", firmware_file, timeout=120.0)
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert args[0] == "http://192.168.1.10/update"
+        assert kwargs["timeout"] == 120.0
+        assert "update" in kwargs["files"]
+        assert kwargs["files"]["update"][0] == "firmware.bin"
+        assert kwargs["files"]["update"][1] is firmware_file
+        assert result == {"status": "ok", "code": 200, "body": "OK"}
+
+    @patch("bayesian_sprinkler.sensor_client.requests.post")
+    def test_ota_update_raises_on_error(self, mock_post, esp_client):
+        mock_post.return_value = Mock(status_code=400)
+        import requests as req_mod
+        mock_post.return_value.raise_for_status.side_effect = req_mod.HTTPError(
+            "400 Bad Request"
+        )
+        with pytest.raises(req_mod.HTTPError):
+            esp_client.ota_update("firmware.bin", Mock())
+
 
 class TestWeatherClient:
     @pytest.fixture

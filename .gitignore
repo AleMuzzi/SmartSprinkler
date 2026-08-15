@@ -81,6 +81,10 @@ BayesianSprinkler/tests/simulations/**/run_*/
 # Local WiFi credentials (never commit secrets)
 firmware/include/wifi_secrets.h
 
+# Auto-generated firmware version counter and header (managed by extra_script.py)
+firmware/.build_count
+firmware/src/esp32/fw_version.h
+
 # Flutter build output
 build/
 

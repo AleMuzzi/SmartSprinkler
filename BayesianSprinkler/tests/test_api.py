@@ -146,3 +146,55 @@ class TestAPI:
     def test_api_requires_json_body(self, client):
         response = client.post("/api/plants/manual-water")
         assert response.status_code == 422
+
+    def test_esp_version_success(self, client):
+        with patch.object(api.state.esp, "get_firmware_version") as mock_version:
+            mock_version.return_value = "1.0.0.5"
+            response = client.get("/api/esp/version")
+            assert response.status_code == 200
+            assert response.json() == {"version": "1.0.0.5"}
+
+    def test_esp_version_unreachable_returns_dash(self, client):
+        with patch.object(api.state.esp, "get_firmware_version") as mock_version:
+            mock_version.return_value = None
+            response = client.get("/api/esp/version")
+            assert response.status_code == 200
+            assert response.json() == {"version": "-"}
+
+    def test_esp_ota_rejects_non_bin(self, client):
+        response = client.post(
+            "/api/esp/ota",
+            files={"file": ("readme.txt", b"hello", "text/plain")},
+        )
+        assert response.status_code == 400
+
+    def test_esp_ota_rejects_too_large(self, client):
+        from bayesian_sprinkler.api import OTA_MAX_BYTES
+        big = b"\x00" * (OTA_MAX_BYTES + 1)
+        response = client.post(
+            "/api/esp/ota",
+            files={"file": ("firmware.bin", big, "application/octet-stream")},
+        )
+        assert response.status_code == 400
+
+    def test_esp_ota_success(self, client):
+        with patch.object(api.state.esp, "ota_update") as mock_ota:
+            mock_ota.return_value = {"status": "ok"}
+            response = client.post(
+                "/api/esp/ota",
+                files={"file": ("firmware.bin", b"\x00\x01\x02", "application/octet-stream")},
+            )
+            assert response.status_code == 200
+            assert response.json() == {"status": "ok", "filename": "firmware.bin"}
+            mock_ota.assert_called_once()
+            args, _ = mock_ota.call_args
+            assert args[0] == "firmware.bin"
+
+    def test_esp_ota_relay_failure_returns_502(self, client):
+        with patch.object(api.state.esp, "ota_update") as mock_ota:
+            mock_ota.side_effect = RuntimeError("ESP unreachable")
+            response = client.post(
+                "/api/esp/ota",
+                files={"file": ("firmware.bin", b"\x00\x01\x02", "application/octet-stream")},
+            )
+            assert response.status_code == 502

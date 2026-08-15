@@ -18,6 +18,7 @@ public:
     void init();
     void poll();
     void setup_routes(const Hashtable<String, Route>& routes);
+    void setup_ota();
     bool is_stopped() const { return this->stopped; }
 
 private:

@@ -27,6 +27,7 @@ class DashboardViewModel extends ChangeNotifier {
   WeatherData? _weather;
   ConnectivityStatus _espStatus = ConnectivityStatus.checking;
   ConnectivityStatus _bayesianStatus = ConnectivityStatus.checking;
+  String? _espFirmwareVersion;
 
   List<PlantData> get plants => _plants;
   List<BayesianPlantStatus> get plantStatuses => _plantStatuses;
@@ -34,6 +35,7 @@ class DashboardViewModel extends ChangeNotifier {
   WeatherData? get weather => _weather;
   ConnectivityStatus get espStatus => _espStatus;
   ConnectivityStatus get bayesianStatus => _bayesianStatus;
+  String? get espFirmwareVersion => _espFirmwareVersion;
 
   DashboardViewModel() {
     _initDefaultPlants();
@@ -116,6 +118,17 @@ class DashboardViewModel extends ChangeNotifier {
       _espStatus = response.statusCode == 200
           ? ConnectivityStatus.connected
           : ConnectivityStatus.disconnected;
+
+      if (response.statusCode == 200) {
+        try {
+          final body = jsonDecode(response.body);
+          if (body is Map<String, dynamic> && body['version'] is String) {
+            _espFirmwareVersion = body['version'];
+          }
+        } catch (_) {
+          // Non-JSON / unexpected health payload — keep the last known version.
+        }
+      }
     } catch (e) {
       log('ESP health check error: $e');
       _espStatus = ConnectivityStatus.disconnected;
