@@ -66,6 +66,7 @@ class EvidenceNode(BaseModel):
 class PlantStatus(BaseModel):
     plant_id: str
     probability_of_need: float
+    threshold: float
     soil_moisture: float | None
     evidence_nodes: list[EvidenceNode]
 
@@ -499,6 +500,7 @@ def _register_routes(app: FastAPI):
             plants.append(PlantStatus(
                 plant_id=plant_name,
                 probability_of_need=round(prob, 2),
+                threshold=state.config["plants"][plant_name].get("threshold", 0.5),
                 soil_moisture=plant_sm,
                 evidence_nodes=evidence_nodes,
             ))
@@ -596,6 +598,7 @@ def _register_routes(app: FastAPI):
             plants.append(PlantStatus(
                 plant_id=plant_name,
                 probability_of_need=round(prob, 2),
+                threshold=state.config["plants"][plant_name].get("threshold", 0.5),
                 soil_moisture=plant_sm,
                 evidence_nodes=evidence_nodes,
             ))
@@ -769,6 +772,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
         triggered_plants = []
         triggered_doses = {}
         blocked_by_hour = []
+        bn_would_water = []
         status["_blocked_by_hour"] = blocked_by_hour
         for plant_name, cfg in st.config["plants"].items():
             sensor_idx = cfg.get("sensor_index", 0)
@@ -800,6 +804,8 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             # stays complete regardless of the watering hour window.
             threshold = cfg["threshold"]
             need = "yes" if prob >= threshold else "no"
+            if need == "yes":
+                bn_would_water.append(plant_name)
             insert_record(
                 plant_type=plant_name,
                 soil_moisture=soil,
@@ -887,7 +893,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                    f"air_temp={status['air_temperature']}; air_humid={status['air_humidity']}; "
                    f"cloud_cover={wx['cloud_cover']}; rain={wx['rain_forecast']}; "
                    f"hour={hour_now}; watered={triggered_plants}; "
-                   f"hour_blocked={blocked_by_hour}")
+                   f"hour_blocked={blocked_by_hour}; bn_would_water={bn_would_water}")
         log_event("inference", f"Inference cycle completed ({len(triggered_plants)} watered)",
                   details=details)
     except Exception as e:

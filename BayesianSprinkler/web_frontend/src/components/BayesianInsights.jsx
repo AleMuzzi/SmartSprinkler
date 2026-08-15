@@ -113,7 +113,7 @@ function SoilMoistureBadge({ value }) {
   )
 }
 
-function ProbabilityBar({ value, threshold = 0.5 }) {
+function ProbabilityBar({ value, threshold }) {
   const pct = Math.round(value * 100)
   const color = pct >= 70 ? 'bg-red-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-green-500'
   return (
@@ -150,7 +150,8 @@ export function BayesianInsights({ plantStatuses }) {
         {plantStatuses.map((status) => {
           const label = PLANT_LABELS[status.plant_id] || status.plant_id
           const prob = status.probability_of_need ?? 0
-          const needs = prob >= 0.5
+          const threshold = status.threshold ?? 0.5
+          const needs = prob >= threshold
           return (
             <div key={status.plant_id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
               <div className="flex justify-between items-center mb-2">
@@ -162,7 +163,7 @@ export function BayesianInsights({ plantStatuses }) {
                   </span>
                 </div>
               </div>
-              <ProbabilityBar value={prob} />
+              <ProbabilityBar value={prob} threshold={threshold} />
               <WhySection status={status} />
             </div>
           )

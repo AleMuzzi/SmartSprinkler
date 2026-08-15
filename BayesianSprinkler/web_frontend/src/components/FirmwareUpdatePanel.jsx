@@ -3,6 +3,7 @@ import { fetchFirmwareVersion, uploadFirmware } from '../services/api.js'
 
 export function FirmwareUpdatePanel({ onMessage }) {
   const [version, setVersion] = useState('-')
+  const [fileVersion, setFileVersion] = useState(null)
   const [file, setFile] = useState(null)
   const [progress, setProgress] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -23,6 +24,24 @@ export function FirmwareUpdatePanel({ onMessage }) {
     }
   }
 
+  function findVersionInBytes(bytes) {
+  // The version is baked into the binary as ASCII (boot log + /health body).
+  // Scan for the "major.minor.patch.build" pattern (e.g. 1.0.0.17).
+  const decoder = new TextDecoder('latin1')
+  const text = decoder.decode(bytes)
+  const m = text.match(/\d+\.\d+\.\d+\.\d+/)
+  return m ? m[0] : null
+}
+
+const readFileVersion = (selected) => {
+    const fileReader = new FileReader()
+    fileReader.onload = () => {
+      const bytes = new Uint8Array(fileReader.result)
+      setFileVersion(findVersionInBytes(bytes))
+    }
+    fileReader.readAsArrayBuffer(selected)
+  }
+
   const handleFile = (e) => {
     const selected = e.target.files?.[0] || null
     if (selected && !selected.name.toLowerCase().endsWith('.bin')) {
@@ -32,8 +51,10 @@ export function FirmwareUpdatePanel({ onMessage }) {
       return
     }
     setFile(selected)
+    setFileVersion(null)
     setProgress(null)
     setStatus('')
+    if (selected) readFileVersion(selected)
   }
 
   const handleUpload = async () => {
@@ -92,7 +113,14 @@ export function FirmwareUpdatePanel({ onMessage }) {
         />
 
         {file && (
-          <p className="text-xs text-gray-500">Selezionato: {file.name} ({Math.round(file.size / 1024)} KB)</p>
+          <p className="text-xs text-gray-500">
+            Selezionato: {file.name} ({Math.round(file.size / 1024)} KB)
+            {fileVersion ? (
+              <span className="ml-2 font-mono text-gray-700">— versione {fileVersion}</span>
+            ) : (
+              <span className="ml-2 text-gray-400">— versione sconosciuta</span>
+            )}
+          </p>
         )}
 
         {progress !== null && (

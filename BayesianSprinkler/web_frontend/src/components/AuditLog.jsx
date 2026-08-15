@@ -141,6 +141,7 @@ export function AuditLog({ initialFilter = '' }) {
           <option value="alert">alert</option>
           <option value="error">error</option>
           <option value="config">config</option>
+          <option value="ota">ota</option>
         </select>
       </div>
 
