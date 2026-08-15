@@ -31,7 +31,7 @@ export function useEspData() {
 
   useEffect(() => {
     fetch()
-    const interval = setInterval(fetch, 5000)
+    const interval = setInterval(fetch, 10000)
     return () => clearInterval(interval)
   }, [fetch])
 

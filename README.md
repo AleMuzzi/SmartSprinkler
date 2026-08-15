@@ -22,7 +22,7 @@ graph TB
         BN["Bayesian Network<br/>EvaporationRisk → NeedWater"]
         DB[("SQLite<br/>sensor_history")]
         API_BS["HTTP API (:8080)<br/>POST /api/plants/manual-water<br/>GET /api/health"]
-        WORKER["APScheduler<br/>hourly poll + inference"]
+        WORKER["APScheduler<br/>inference cycle (30 min)"]
         REFINE["refine_weights.py<br/>Bayesian estimation<br/>(cron weekly)"]
     end
 
@@ -69,9 +69,8 @@ ViewModel-based app with 4 tabs (Dashboard, Camera, Logs, System). It polls the 
 FastAPI server that runs the autonomous decision loop:
 
 - **Bayesian network** with 8 nodes (`AirTemperature`, `AirHumidity`, `CloudCover` → `EvaporationRisk` → `NeedWater` + `SoilMoisture`, `PlantType`, `RainForecast`). Intermediate `EvaporationRisk` node keeps CPTs compact (18 + 72 entries).
-- **APScheduler** runs two background jobs:
-  - *Hourly poll* — reads sensors + weather, logs the BN decision (`need_water=yes/no` per plant) to SQLite
-  - *Inference cycle* — queries the BN every `poll_interval` seconds and waters plants that exceed their probability threshold
+- **APScheduler** runs a single background job every `poll_interval` seconds (30 min by default):
+  - *Inference cycle* — reads the ESP sensors, fetches weather, logs every plant's BN decision (`need_water=yes/no` per plant) to SQLite, then waters plants that exceed their probability threshold
 - **`POST /api/plants/manual-water`** — on-demand endpoint called by the mobile app: snapshots current conditions with `need_water=yes`, then triggers the ESP relay
 - **Cistern tracking** — the server tracks the water tank level (`/api/cistern`), deduces refills from the ESP `water_low_alert` sensor, and provides `POST /api/cistern/refill` for manual override
 - **Audit log** — every inference, command, and error is logged with a traceback (`/api/audit-log`, `GET`/`DELETE`/CSV export); errors are surfaced in the web UI instead of silently swallowed

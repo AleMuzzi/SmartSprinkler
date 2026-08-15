@@ -50,7 +50,7 @@ graph TD
 graph TB
     subgraph "FastAPI Server (:8080)"
         API[POST /api/plants/manual-water]
-        SCHED[APScheduler<br/>hourly poll + inference cycle]
+        SCHED[APScheduler<br/>inference cycle (30 min)]
         BN[Bayesian Network<br/>SmartSprinklerBN]
         DB[(SQLite<br/>sensor_history)]
     end
@@ -182,8 +182,9 @@ Starts a FastAPI server (default `http://0.0.0.0:8080`) with:
 
 | Job | Interval | What it does |
 |---|---|---|
-| **Hourly poll** | 1 hour | Reads ESP sensors + weather API, runs the BN, logs the true per-plant decision (`need_water=yes/no`) to SQLite |
-| **Inference cycle** | `poll_interval` (default 120 s) | Queries the BN for each plant; waters if `P(need water) > threshold` |
+| **Inference cycle** | `poll_interval` (default 1800 s) | Reads ESP sensors + weather, logs every plant's BN decision (`need_water=yes/no`) to SQLite, waters if `P(need water) > threshold` |
+
+Dry-day telemetry stays consistent because the plant loop also logs to SQLite during the inference cycle itself.
 
 ### Sensor routing & error handling
 

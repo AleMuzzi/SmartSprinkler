@@ -233,14 +233,11 @@ plants:
 
 ## Background Jobs
 
-### Hourly Poll
-
-Logs sensor data for all plants every interval (temperature-dependent, 15/30/60 min).
-
 ### Inference Cycle
 
-Runs on configured `poll_interval` (default 30s):
-1. Fetches ESP32 status
+Runs on the configured `esp.poll_interval` (default 1800s / 30 minutes). This is the only job that touches the ESP — no separate hourly poll:
+
+1. Fetches ESP32 `/status`
 2. Fetches weather data
-3. Computes P(NeedWater=yes) for each plant
-4. Triggers watering if probability > threshold and pump is not already running
+3. Computes P(NeedWater=yes) for each plant and logs every snapshot (`need_water=yes/no`) to SQLite — plants outside the watering hour window are still logged
+4. Triggers watering if probability > threshold and pump is not already running (respecting the hour window)

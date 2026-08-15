@@ -46,13 +46,6 @@ class AppState:
 
 state = AppState()
 
-POLL_INTERVALS = {
-    "low": 60,
-    "medium": 30,
-    "high": 15,
-}
-DEFAULT_INTERVAL = 30
-
 
 # ── Request / Response models ────────────────────────────────────────
 
@@ -100,10 +93,9 @@ async def lifespan(app: FastAPI):
     init_db()
     init_audit_table()
     state.scheduler = BackgroundScheduler()
-    _schedule_hourly_poll(state, interval_minutes=60)
     state.scheduler.add_job(
         func=lambda: _poll_weather(state),
-        trigger=IntervalTrigger(seconds=30),
+        trigger=IntervalTrigger(minutes=30),
         id="weather_poll",
         replace_existing=True,
     )
@@ -124,17 +116,6 @@ async def lifespan(app: FastAPI):
         state.scheduler.shutdown(wait=False)
     logger.info("API server stopped")
 
-
-def _schedule_hourly_poll(st: AppState, interval_minutes: int):
-    st.scheduler.add_job(
-        func=lambda: _hourly_poll(st),
-        trigger=IntervalTrigger(minutes=interval_minutes),
-        id="hourly_poll",
-        replace_existing=True,
-    )
-
-
-# ── App factory ─────────────────────────────────────────────────────
 
 def create_app(config: dict) -> FastAPI:
     state.config = config
@@ -594,154 +575,6 @@ def _register_routes(app: FastAPI):
 
 # ── Background jobs ─────────────────────────────────────────────────
 
-def _hourly_poll(st: AppState):
-    errors: list[str] = []
-
-    try:
-        status = st.esp.get_status()
-        _capture_esp_status(st, status)
-        raw_temp = float(status["air_temperature"])
-        if raw_temp < 0:
-            raise ValueError(f"DHT returned invalid temperature {raw_temp}")
-    except Exception as e:
-        errors.append(f"ESP/DHT temperature unavailable: {e}")
-        raw_temp = None
-
-    if raw_temp is None:
-        try:
-            wx = st.weather.fetch()
-            raw_temp = wx.get("temperature")
-        except Exception as e:
-            errors.append(f"weather API temperature unavailable: {e}")
-            raw_temp = None
-
-    if raw_temp is None:
-        tb = traceback.format_exc()
-        logger.error("Hourly poll: no temperature source available — skipping")
-        log_event(
-            "error",
-            "Hourly poll skipped: no temperature source",
-            details="; ".join(errors) + "\n" + tb,
-        )
-        _reschedule_poll(st, DEFAULT_INTERVAL, None)
-        return
-
-    temp_state = _temperature_state(raw_temp, st.config["thresholds"]["temperature"])
-    interval = POLL_INTERVALS.get(temp_state, DEFAULT_INTERVAL)
-
-    logger.info(
-        "Current temperature is %.1f°C (%s): "
-        "adjusting polling interval to %d minutes.",
-        raw_temp, temp_state, interval,
-    )
-
-    _reschedule_poll(st, interval, raw_temp)
-    log_event("config", f"Adjusted poll interval to {interval} minutes",
-              details=f"temperature={raw_temp:.1f}°C state={temp_state}")
-
-    try:
-        wx = st.weather.fetch()
-    except Exception as e:
-        tb = traceback.format_exc()
-        logger.error("Hourly poll: weather fetch failed — skipping snapshot")
-        log_event(
-            "error",
-            "Hourly poll skipped: weather fetch failed",
-            details=f"{e}\n{tb}",
-        )
-        return
-
-    _log_and_insert(st, wx, status=status)
-
-
-def _temperature_state(temp_celsius: float, thresholds: dict) -> str:
-    if temp_celsius < thresholds["low"]:
-        return "low"
-    if temp_celsius < thresholds["medium"]:
-        return "medium"
-    return "high"
-
-
-def _reschedule_poll(st: AppState, interval_minutes: int, temperature: float | None):
-    with st.lock:
-        existing = st.scheduler.get_job("hourly_poll")
-        if existing:
-            st.scheduler.modify_job(
-                "hourly_poll",
-                trigger=IntervalTrigger(minutes=interval_minutes),
-            )
-        else:
-            _schedule_hourly_poll(st, interval_minutes)
-
-
-def _log_and_insert(st: AppState, wx: dict, status: dict | None = None):
-    if status is None:
-        try:
-            status = st.esp.get_status()
-            _capture_esp_status(st, status)
-        except Exception as e:
-            tb = traceback.format_exc()
-            logger.error("Hourly poll: ESP offline — skipping snapshot")
-            log_event(
-                "error",
-                "Hourly poll skipped: ESP offline",
-                details=f"{e}\n{tb}",
-            )
-            return
-
-    try:
-        temp = st.esp.discretize_temperature(float(status["air_temperature"]))
-        humid = st.esp.discretize_humidity(float(status["air_humidity"]))
-    except Exception as e:
-        tb = traceback.format_exc()
-        logger.error("Hourly poll: invalid ESP sensor reading — skipping snapshot")
-        log_event(
-            "error",
-            "Hourly poll skipped: invalid ESP sensor reading",
-            details=f"{e}\n{tb}",
-        )
-        return
-
-    decisions: dict[str, str] = {}
-    try:
-        for plant_name in st.config["plants"]:
-            cfg = st.config["plants"][plant_name]
-            sensor_idx = cfg.get("sensor_index", 0)
-            raw_sm = status.get(f"soil_moisture_{sensor_idx}")
-            plant_sm = float(raw_sm) if raw_sm is not None else float(status["soil_moisture"])
-            plant_soil = st.esp.discretize_soil_moisture(plant_sm)
-
-            with st.lock:
-                prob = st.bn.query(
-                    plant=plant_name,
-                    temperature=temp,
-                    humidity=humid,
-                    cloud_cover=wx["cloud_cover"],
-                    soil_moisture=plant_soil,
-                    rain_forecast=wx["rain_forecast"],
-                )
-            need = "yes" if prob >= cfg["threshold"] else "no"
-            decisions[plant_name] = need
-            insert_record(
-                plant_type=plant_name,
-                soil_moisture=plant_soil,
-                air_temperature=temp,
-                air_humidity=humid,
-                cloud_cover=wx["cloud_cover"],
-                rain_forecast=wx["rain_forecast"],
-                need_water=need,
-            )
-        n_yes = sum(1 for v in decisions.values() if v == "yes")
-        logger.info("Hourly poll: logged %d plants (need_water yes=%d/no=%d)",
-                    len(st.config["plants"]), n_yes, len(decisions) - n_yes)
-        log_event("inference", f"Hourly poll: logged {len(st.config['plants'])} plants",
-                  details=(f"cloud_cover={wx['cloud_cover']} rain={wx['rain_forecast']} "
-                           f"decisions={decisions}"))
-    except Exception as e:
-        tb = traceback.format_exc()
-        logger.exception("Hourly poll failed")
-        log_event("error", f"Hourly poll failed: {e}", details=tb)
-
 
 def _inference_cycle(st: AppState):
     try:
@@ -901,14 +734,6 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             plant_sm = float(raw_sm) if raw_sm is not None else float(status["soil_moisture"])
             soil = st.esp.discretize_soil_moisture(plant_sm)
 
-            if not _watering_allowed(cfg, hour_now, st=st):
-                logger.info(
-                    "  %s → hour=%02d not in allowed hours, skip (soil=%s)",
-                    cfg["display_name"], hour_now, soil,
-                )
-                blocked_by_hour.append(plant_name)
-                continue
-
             logger.info(
                 "Inference cycle — %s: soil=%s (raw=%s), temp: %s°C, humidity: %s%%  |  "
                 "sky: %s, rain: %s  |  pump: %s  |  hour=%02d",
@@ -928,6 +753,29 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                     soil_value=plant_sm,
                     sim_hour=hour_now,
                 )
+
+            # Every plant snapshot is logged to SQLite so the sensor history
+            # stays complete regardless of the watering hour window.
+            threshold = cfg["threshold"]
+            need = "yes" if prob >= threshold else "no"
+            insert_record(
+                plant_type=plant_name,
+                soil_moisture=soil,
+                air_temperature=temp,
+                air_humidity=humid,
+                cloud_cover=wx["cloud_cover"],
+                rain_forecast=wx["rain_forecast"],
+                need_water=need,
+            )
+
+            if not _watering_allowed(cfg, hour_now, st=st):
+                logger.info(
+                    "  %s → hour=%02d not in allowed hours, skip (soil=%s)",
+                    cfg["display_name"], hour_now, soil,
+                )
+                blocked_by_hour.append(plant_name)
+                continue
+
             # Hard, model-independent floor on watering volume. Any pulse
             # below this is dropped — tiny dribbles waste pump cycles and
             # don't meaningfully move the soil-moisture needle. Floor is in
@@ -945,7 +793,6 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                 )
                 st._last_watered_doses.pop(plant_name, None)
                 continue
-            threshold = cfg["threshold"]
             will_water = dose_ml > 0 and not pump_on
 
             # Convert mL → seconds at the pump's nominal flow rate so the

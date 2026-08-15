@@ -546,6 +546,7 @@ class _WifiPickerDialogState extends State<_WifiPickerDialog> {
   bool _loading = true;
   List<_WifiEntry> _networks = [];
   String? _error;
+  String? _currentSsid;
 
   @override
   void initState() {
@@ -566,6 +567,7 @@ class _WifiPickerDialogState extends State<_WifiPickerDialog> {
       if (current != null && current.isNotEmpty) {
         final cleaned = current.replaceAll('"', '').trim();
         list.add(_WifiEntry(cleaned, currentlyConnected: true));
+        _currentSsid = cleaned;
       }
       // Android-only: query saved networks.
       try {
@@ -631,7 +633,9 @@ class _WifiPickerDialogState extends State<_WifiPickerDialog> {
           child: const Text('Cancel'),
         ),
         TextButton(
-          onPressed: () => Navigator.pop(context, ''),
+          onPressed: _currentSsid == null
+              ? null
+              : () => Navigator.pop(context, _currentSsid),
           child: const Text('Use current'),
         ),
       ],

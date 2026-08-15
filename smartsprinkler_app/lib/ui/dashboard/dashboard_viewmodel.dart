@@ -17,6 +17,7 @@ class DashboardViewModel extends ChangeNotifier {
   final Sprinkler sprinkler = Sprinkler();
 
   Timer? _espTimer;
+  Timer? _healthTimer;
   Timer? _bayesianTimer;
   Timer? _cisternTimer;
   bool _disposed = false;
@@ -69,14 +70,16 @@ class DashboardViewModel extends ChangeNotifier {
   }
 
   void _startPolling() {
+    _fetchEspHealth();
     _fetchEspStatus();
     _fetchBayesianStatus();
     _fetchWeatherStatus();
     _fetchCisternStatus();
 
+    _healthTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspHealth());
     _espTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspStatus());
-    _bayesianTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchBayesianStatus());
-    Timer.periodic(const Duration(seconds: 30), (_) => _fetchWeatherStatus());
+    _bayesianTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchBayesianStatus());
+    Timer.periodic(const Duration(minutes: 2), (_) => _fetchWeatherStatus());
     _cisternTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchCisternStatus());
   }
 
@@ -84,6 +87,7 @@ class DashboardViewModel extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _espTimer?.cancel();
+    _healthTimer?.cancel();
     _bayesianTimer?.cancel();
     _cisternTimer?.cancel();
     super.dispose();
@@ -93,16 +97,37 @@ class DashboardViewModel extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  Future<void> fetchEspHealth() => _fetchEspHealth();
   Future<void> fetchEspStatus() => _fetchEspStatus();
   Future<void> fetchBayesianStatus() => _fetchBayesianStatus();
   Future<void> fetchWeatherStatus() => _fetchWeatherStatus();
   Future<void> fetchCisternStatus() => _fetchCisternStatus();
 
+  /// Pings the ESP directly on /health every few seconds to keep the
+  /// online indicator honest, regardless of what the Bayesian server
+  /// last cached for /api/esp/status.
+  Future<void> _fetchEspHealth() async {
+    debugPrint('[_fetchEspHealth] URL: ${settings.apiUrl}/health');
+    try {
+      final response = await http.get(
+        Uri.parse('${settings.apiUrl}/health'),
+      ).timeout(const Duration(seconds: 5));
+
+      _espStatus = response.statusCode == 200
+          ? ConnectivityStatus.connected
+          : ConnectivityStatus.disconnected;
+    } catch (e) {
+      log('ESP health check error: $e');
+      _espStatus = ConnectivityStatus.disconnected;
+    }
+    _notify();
+  }
+
   Future<void> _fetchEspStatus() async {
     // Status comes from the Bayesian server, which caches the latest
     // payload it observed during its inference / manual-water cycles.
     // We no longer hit the ESP directly for /status — only /command goes
-    // there.
+    // there. Connectivity is decided by [_fetchEspHealth] instead.
     debugPrint('[_fetchEspStatus] URL: ${settings.bayesianUrl}/api/esp/status');
     try {
       final response = await http.get(
@@ -140,13 +165,8 @@ class DashboardViewModel extends ChangeNotifier {
           }
         }
       }
-
-      _espStatus = response.statusCode == 200
-          ? ConnectivityStatus.connected
-          : ConnectivityStatus.disconnected;
     } catch (e) {
       log('ESP status fetch error: $e');
-      _espStatus = ConnectivityStatus.disconnected;
     }
     _notify();
   }

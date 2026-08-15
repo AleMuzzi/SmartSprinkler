@@ -20,7 +20,7 @@ docker compose up web-frontend
 ## Features
 
 ### Dashboard tab
-- **Telemetry**: Live ESP32 sensor readings (air temperature, humidity, soil moisture, pump status, rotary position, water level alert) auto-polled every 2s
+- **Telemetry**: Live ESP32 sensor readings (air temperature, humidity, soil moisture, pump status, rotary position, water level alert) auto-polled every 10s
 - **Weather context**: Cloud cover % and rain forecast from Open-Meteo (via Bayesian server)
 - **Bayesian insights**: Per-plant `probability_of_need` (0–1 scale) displayed as color-coded progress bars
 
@@ -31,6 +31,15 @@ docker compose up web-frontend
   - **Via Bayesian**: sends `POST /api/plants/manual-water` to log event + water
 - **Amount presets**: 100ml / 250ml / 500ml / 1000ml or continuous watering (for Direct ESP mode)
 - **Start / Stop** buttons with loading spinners to prevent double-triggers
+
+### Simulation tab
+- Interactive simulation of the Bayesian inference cycle over user-defined weather/soil scenarios, showing per-plant watering decisions without touching the hardware
+
+### Camera tab
+- Live stream from the ESP32-CAM (`{espUrl}:81/stream`)
+
+### Logs tab
+- **Audit log** viewer: error-count banner, *View errors* filter button, expandable rows with full details/tracebacks, error rows highlighted
 
 ### Settings tab
 - **ESP32 URL**: e.g. `http://192.168.1.50:80`
@@ -62,5 +71,10 @@ The Bayesian server (`FastAPI`) has `CORSMiddleware(allow_origins=["*"])` enable
 | Send ESP command | `{espUrl}/command` | POST | `{"action": "START\|STOP\|DISPENSE_SPECIFIC_AMOUNT", "target": "PLANT", "amount"?: ml}` |
 | Poll plant probabilities | `{bayesianUrl}/api/plants/status` | GET | — |
 | Poll weather | `{bayesianUrl}/api/weather/status` | GET | — |
+| Combined dashboard | `{bayesianUrl}/api/dashboard` | GET | — |
 | Bayesian health | `{bayesianUrl}/api/health` | GET | — |
 | Log manual water event | `{bayesianUrl}/api/plants/manual-water` | POST | `{"plant_type": "habanero\|..."}` |
+| Cistern status | `{bayesianUrl}/api/cistern` | GET | — |
+| Refill cistern | `{bayesianUrl}/api/cistern/refill` | POST | — |
+| Audit log | `{bayesianUrl}/api/audit-log` | GET | `?filter=&category=&limit=` |
+| Export audit log | `{bayesianUrl}/api/audit-log/export` | GET | — |
