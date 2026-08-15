@@ -2,88 +2,83 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:network_info_plus/network_info_plus.dart';
+import 'package:http/http.dart' as http;
 
 import 'settings.dart';
 
-/// Watches the device's network state and tells [Settings] whether the
-/// current connection matches the configured home Wi-Fi. When it does,
-/// the app uses the *internal* server URLs; otherwise the *external*
-/// ones (typically a reverse proxy / VPN).
+/// Probes the internal (LAN) server URLs and tells [Settings] whether
+/// they are reachable. In [UrlMode.auto] this is what decides between the
+/// internal and external URL sets — no Wi-Fi SSID / subnet heuristics
+/// involved, so it works regardless of platform restrictions.
 class NetworkMonitor with ChangeNotifier {
   final Settings _settings = Settings();
   final Connectivity _connectivity = Connectivity();
-  final NetworkInfo _networkInfo = NetworkInfo();
+
+  static const Duration _probeTimeout = Duration(seconds: 2);
+  static const Duration _retryInterval = Duration(seconds: 30);
 
   StreamSubscription<List<ConnectivityResult>>? _sub;
+  Timer? _retryTimer;
   bool _initialised = false;
-  String? _currentSsid;
-  bool _currentIsHomeWifi = false;
+  bool _internalReachable = false;
 
-  /// Most recently observed Wi-Fi SSID (stripped of any surrounding
-  /// quotes Android sometimes adds). `null` when not on Wi-Fi.
-  String? get currentSsid => _currentSsid;
+  /// Whether the internal URLs were last observed as reachable.
+  bool get internalReachable => _internalReachable;
 
-  /// Whether [Settings] is currently routing through the internal URLs.
-  bool get isHomeWifi => _currentIsHomeWifi;
-
-  /// Begin listening. Idempotent — calling twice is a no-op.
+  /// Begin probing. Idempotent — calling twice is a no-op.
   Future<void> start() async {
     if (_initialised) return;
     _initialised = true;
+
     try {
-      _sub = _connectivity.onConnectivityChanged.listen(_onChange);
+      _sub = _connectivity.onConnectivityChanged.listen((_) {
+        // Network changed (e.g. joined/left Wi-Fi) — re-probe the LAN.
+        _probe();
+      });
     } catch (e) {
       debugPrint('NetworkMonitor: connectivity stream unavailable: $e');
     }
-    // Seed with the current connectivity state.
-    try {
-      final initial = await _connectivity.checkConnectivity();
-      await _onChange(initial);
-    } catch (e) {
-      debugPrint('NetworkMonitor: checkConnectivity failed: $e');
-    }
+
+    _retryTimer = Timer.periodic(_retryInterval, (_) => _probe());
+
+    await _probe();
   }
 
   void stop() {
     _sub?.cancel();
     _sub = null;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _initialised = false;
   }
 
-  Future<void> _onChange(List<ConnectivityResult> results) async {
-    final onWifi = results.contains(ConnectivityResult.wifi) &&
-        !results.contains(ConnectivityResult.none);
+  Future<void> _probe() async {
+    final reachable = await _internalServersReachable();
+    debugPrint('NetworkMonitor: internal reachable = $reachable');
 
-    String? ssid;
-    if (onWifi) {
-      try {
-        ssid = await _networkInfo.getWifiName();
-      } catch (e) {
-        debugPrint('NetworkMonitor: getWifiName failed: $e');
-      }
-    }
-    ssid = _cleanSsid(ssid);
-
-    final homeSsid = _settings.homeWifiSsid;
-    final isHome = onWifi && homeSsid != null && homeSsid.isNotEmpty
-        && ssid == homeSsid;
-
-    final changed = ssid != _currentSsid || isHome != _currentIsHomeWifi;
-    _currentSsid = ssid;
-    _currentIsHomeWifi = isHome;
-    _settings.setConnectedToHomeWifi(isHome);
+    _internalReachable = reachable;
+    final changed = _internalReachable != _settings.internalReachable;
+    _settings.setInternalReachable(reachable);
     if (changed) notifyListeners();
   }
 
-  /// Android wraps the SSID in quotes ("MyWiFi") — normalise that out
-  /// and trim whitespace.
-  static String? _cleanSsid(String? raw) {
-    if (raw == null) return null;
-    var s = raw.trim();
-    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
-      s = s.substring(1, s.length - 1);
+  /// The internal LAN is reachable when at least one of the configured
+  /// internal servers answers. Any HTTP response (even an error status)
+  /// proves a route exists — only timeouts / socket errors count as
+  /// unreachable.
+  Future<bool> _internalServersReachable() async {
+    final urls = [
+      Uri.parse(_settings.internalEspUrl).replace(path: '/health'),
+      Uri.parse(_settings.internalBayesianUrl).replace(path: '/health'),
+    ];
+    for (final url in urls) {
+      try {
+        await http.get(url).timeout(_probeTimeout);
+        return true;
+      } catch (_) {
+        // unreachable — try the next server
+      }
     }
-    return s.isEmpty ? null : s;
+    return false;
   }
 }

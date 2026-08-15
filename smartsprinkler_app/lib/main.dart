@@ -22,8 +22,8 @@ void main() async {
   final sprinkler = Sprinkler();
   await sprinkler.restoreWaterAlertState();
 
-  // Start watching the connection so apiUrl/bayesianUrl automatically
-  // route to the home LAN or to the external endpoint based on Wi-Fi.
+  // Start probing the LAN so apiUrl/bayesianUrl automatically use the
+  // internal URLs when reachable and fall back to the external ones.
   final networkMonitor = NetworkMonitor();
   await networkMonitor.start();
 

@@ -39,7 +39,6 @@ dependencies:
   shared_preferences: ^2.3.5
   timezone: ^0.10.0
   connectivity_plus: ^6.0.5
-  network_info_plus: ^6.1.1
 
   cupertino_icons: ^1.0.8
 

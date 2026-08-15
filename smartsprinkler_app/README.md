@@ -68,4 +68,4 @@ Configured with **internal (LAN)** and **external** URL pairs. When the phone is
 flutter run
 ```
 
-Requires Flutter SDK and the `http`, `shared_preferences`, `network_info_plus`, `connectivity_plus`, `flutter_local_notifications`, and `fluttertoast` packages (see `pubspec.yaml`).
+Requires Flutter SDK and the `http`, `shared_preferences`, `connectivity_plus`, `flutter_local_notifications`, and `fluttertoast` packages (see `pubspec.yaml`).

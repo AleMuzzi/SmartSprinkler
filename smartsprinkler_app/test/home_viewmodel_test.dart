@@ -25,7 +25,7 @@ void main() {
 
     test('settings has default external values', () {
       final vm = HomePageViewModel();
-      vm.settings.setConnectedToHomeWifi(false);
+      vm.settings.setInternalReachable(false);
       expect(vm.settings.apiUrl, equals('http://my.home.server'));
       expect(vm.settings.bayesianUrl, equals('http://my.home.server:8080'));
     });
