@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:syncfusion_flutter_gauges/gauges.dart';
 
 import '../../../data/models/plant_data.dart';
 import '../../../data/models/weather_data.dart';
@@ -20,10 +19,9 @@ class DashboardView extends StatelessWidget {
         child: Column(
           children: [
             _WaterAlertBanner(),
-            _TopGaugeSection(),
-            _CisternCompact(),
+            _StatusHeader(),
             Divider(height: 1, color: Color(0xFFE0E4E8)),
-            Expanded(child: _PlantCarousel()),
+            Expanded(child: _PlantGrid()),
             Divider(height: 1, color: Color(0xFFE0E4E8)),
             _WeatherFooter(),
           ],
@@ -75,100 +73,24 @@ class _WaterAlertBanner extends StatelessWidget {
   }
 }
 
-class _TopGaugeSection extends StatelessWidget {
+class _StatusHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<DashboardViewModel>();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(0, 16, 0, 0),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              SizedBox(
-                width: 180,
-                height: 180,
-                child: SfRadialGauge(
-                  axes: <RadialAxis>[
-                    RadialAxis(
-                      minimum: 0,
-                      maximum: 100,
-                      startAngle: 135,
-                      endAngle: 45,
-                      showLabels: false,
-                      showTicks: false,
-                      radiusFactor: 0.9,
-                      axisLineStyle: const AxisLineStyle(
-                        thickness: 0.15,
-                        thicknessUnit: GaugeSizeUnit.factor,
-                        color: Color(0xFFE8EDF2),
-                      ),
-                      pointers: <GaugePointer>[
-                        RangePointer(
-                          value: (vm.averageProbabilityOfNeed * 100).clamp(0, 100),
-                          width: 0.15,
-                          sizeUnit: GaugeSizeUnit.factor,
-                          gradient: const SweepGradient(
-                            colors: [Color(0xFF4CAF50), Color(0xFFFFC107), Color(0xFFF44336)],
-                            stops: [0.0, 0.5, 1.0],
-                          ),
-                        ),
-                        NeedlePointer(
-                          value: (vm.averageProbabilityOfNeed * 100).clamp(0, 100),
-                          needleLength: 0.6,
-                          lengthUnit: GaugeSizeUnit.factor,
-                          needleStartWidth: 1,
-                          needleEndWidth: 4,
-                          needleColor: Color(0xFF2D3748),
-                          knobStyle: const KnobStyle(
-                            knobRadius: 0.08,
-                            sizeUnit: GaugeSizeUnit.factor,
-                            color: Color(0xFF2D3748),
-                          ),
-                        ),
-                      ],
-                      annotations: <GaugeAnnotation>[
-                        GaugeAnnotation(
-                          widget: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '${(vm.averageProbabilityOfNeed * 100).round()}%',
-                                style: const TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2D3748),
-                                ),
-                              ),
-                              const Text(
-                                'Avg Need',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF718096),
-                                ),
-                              ),
-                            ],
-                          ),
-                          angle: 90,
-                          positionFactor: 0.0,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ConnectivityIndicators(esp: vm.espStatus, bayesian: vm.bayesianStatus),
-                ],
-              ),
+              _ConnectivityIndicators(esp: vm.espStatus, bayesian: vm.bayesianStatus),
             ],
           ),
+          const SizedBox(height: 10),
+          _CisternCompact(),
         ],
       ),
     );
@@ -183,11 +105,11 @@ class _ConnectivityIndicators extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         _ConnectionDot(label: 'ESP', status: esp),
-        const SizedBox(height: 6),
+        const SizedBox(width: 24),
         _ConnectionDot(label: 'Bayesian', status: bayesian),
       ],
     );
@@ -269,18 +191,16 @@ class _CisternCompact extends StatelessWidget {
       barColor = const Color(0xFF4CAF50);
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: lowAlert ? const Color(0xFFF44336) : const Color(0xFFE8EDF2),
-            width: lowAlert ? 1.5 : 1,
-          ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: lowAlert ? const Color(0xFFF44336) : const Color(0xFFE8EDF2),
+          width: lowAlert ? 1.5 : 1,
         ),
+      ),
         child: Row(
           children: [
             const Text('💧', style: TextStyle(fontSize: 16)),
@@ -354,46 +274,58 @@ class _CisternCompact extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
+      );
   }
 }
 
 
-class _PlantCarousel extends StatelessWidget {
-  const _PlantCarousel();
+class _PlantGrid extends StatelessWidget {
+  const _PlantGrid();
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<DashboardViewModel>();
-    final pageController = PageController(viewportFraction: 0.85, keepPage: true);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Text(
-            'Plants',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2D3748),
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gridPadding = 12.0;
+        const spacing = 12.0;
+        const crossAxisCount = 2;
+        final childAspectRatio = _gridChildAspectRatio(constraints.maxHeight);
+        final cellWidth =
+            (constraints.maxWidth - gridPadding * 2 - spacing) / crossAxisCount;
+        final cellHeight = cellWidth / childAspectRatio;
+        final contentHeight =
+            cellHeight * crossAxisCount + spacing * (crossAxisCount - 1) + gridPadding * 2;
+        final verticalPadding = contentHeight < constraints.maxHeight
+            ? (constraints.maxHeight - contentHeight) / 2
+            : gridPadding;
+
+        return GridView.builder(
+          padding: EdgeInsets.symmetric(
+            horizontal: gridPadding,
+            vertical: verticalPadding,
           ),
-        ),
-        Expanded(
-          child: PageView.builder(
-            controller: pageController,
-            itemCount: vm.plants.length,
-            itemBuilder: (context, index) {
-              final plant = vm.plants[index];
-              return _PlantCard(plant: plant);
-            },
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            childAspectRatio: childAspectRatio,
           ),
-        ),
-      ],
+          itemCount: vm.plants.length,
+          itemBuilder: (context, index) {
+            final plant = vm.plants[index];
+            return _PlantCard(plant: plant);
+          },
+        );
+      },
     );
+  }
+
+  double _gridChildAspectRatio(double height) {
+    if (height <= 380) return 0.72;
+    if (height <= 480) return 0.78;
+    return 0.85;
   }
 }
 
@@ -404,8 +336,6 @@ class _PlantCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final vm = context.read<DashboardViewModel>();
-
     Color needColor;
     if (plant.probabilityOfNeed >= 0.70) {
       needColor = const Color(0xFFF44336);
@@ -428,15 +358,14 @@ class _PlantCard extends StatelessWidget {
         );
       },
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
@@ -445,100 +374,110 @@ class _PlantCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              height: 90,
+              height: 92,
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: plant.imageUrl.isNotEmpty
                     ? Image.asset(
                         plant.imageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                        errorBuilder: (_, _, _) => Container(
                           color: const Color(0xFFE8EDF2),
-                          child: const Icon(Icons.eco, size: 32, color: Color(0xFFA0AEC0)),
+                          child: const Icon(Icons.eco, size: 28, color: Color(0xFFA0AEC0)),
                         ),
                       )
                     : Container(
                         color: const Color(0xFFE8EDF2),
-                        child: const Icon(Icons.eco, size: 40, color: Color(0xFFA0AEC0)),
+                        child: const Icon(Icons.eco, size: 32, color: Color(0xFFA0AEC0)),
                       ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    plant.displayName,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3748),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: needColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${(plant.probabilityOfNeed * 100).round()}% Need',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: needColor,
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          plant.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2D3748),
                           ),
                         ),
-                      ),
-                      if (plant.isWatering) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2196F3).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.water_drop, size: 12, color: Color(0xFF1565C0)),
-                              SizedBox(width: 3),
-                              Text(
-                                'Watering',
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: needColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${(plant.probabilityOfNeed * 100).round()}% Need',
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1565C0),
+                                  color: needColor,
+                                ),
+                              ),
+                            ),
+                            if (plant.isWatering) ...[
+                              const SizedBox(width: 5),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2196F3).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.water_drop, size: 10, color: Color(0xFF1565C0)),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Watering',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1565C0),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
-                          ),
+                          ],
                         ),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => DashboardViewModel.showWaterDialog(context, plant),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4CAF50),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                      ),
-                      child: const Text('Water Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     ),
-                  ),
-                ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => DashboardViewModel.showWaterDialog(context, plant),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4CAF50),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                        ),
+                        child: const Text('Water Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

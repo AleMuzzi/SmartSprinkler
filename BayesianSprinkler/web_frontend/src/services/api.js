@@ -130,12 +130,14 @@ export async function fetchDashboard() {
   return res.json()
 }
 
-export async function fetchAuditLog({ filter = '', category = null, limit = 200 } = {}) {
+export async function fetchAuditLog({ filter = '', category = null, limit = 200, startDate = null, endDate = null } = {}) {
   const { bayesianUrl } = getSettings()
   const params = new URLSearchParams()
   if (filter) params.set('filter', filter)
   if (category) params.set('category', category)
   if (limit) params.set('limit', String(limit))
+  if (startDate) params.set('start_date', startDate)
+  if (endDate) params.set('end_date', endDate)
   const qs = params.toString()
   const url = `${bayesianUrl}/api/audit-log${qs ? '?' + qs : ''}`
   const res = await fetchWithTimeout(url)
@@ -143,11 +145,25 @@ export async function fetchAuditLog({ filter = '', category = null, limit = 200 
   return res.json()
 }
 
-export async function exportAuditLogCsv({ filter = '', category = null } = {}) {
+export async function deleteAuditLog({ startDate = null, endDate = null } = {}) {
+  const { bayesianUrl } = getSettings()
+  const params = new URLSearchParams()
+  if (startDate) params.set('start_date', startDate)
+  if (endDate) params.set('end_date', endDate)
+  const qs = params.toString()
+  const url = `${bayesianUrl}/api/audit-log${qs ? '?' + qs : ''}`
+  const res = await fetchWithTimeout(url, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Audit log delete failed: ${res.status}`)
+  return res.json()
+}
+
+export async function exportAuditLogCsv({ filter = '', category = null, startDate = null, endDate = null } = {}) {
   const { bayesianUrl } = getSettings()
   const params = new URLSearchParams()
   if (filter) params.set('filter', filter)
   if (category) params.set('category', category)
+  if (startDate) params.set('start_date', startDate)
+  if (endDate) params.set('end_date', endDate)
   const qs = params.toString()
   const url = `${bayesianUrl}/api/audit-log/export${qs ? '?' + qs : ''}`
   const res = await fetchWithTimeout(url)

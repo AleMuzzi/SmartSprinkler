@@ -24,7 +24,9 @@ class _AuditLogViewState extends State<AuditLogView> {
   String _category = '';
   bool _loading = false;
   bool _downloading = false;
+  bool _deleting = false;
   String? _error;
+  DateTime? _selectedDate;
   final Set<int> _expandedDetails = {};
 
   @override
@@ -45,9 +47,12 @@ class _AuditLogViewState extends State<AuditLogView> {
       _error = null;
     });
     try {
+      final dateStr = _selectedDate != null ? _fmtDate(_selectedDate!) : null;
       final entries = await _service.fetchLogEntries(
         filter: _filterController.text,
         category: _category.isEmpty ? null : _category,
+        startDate: dateStr,
+        endDate: dateStr,
       );
       if (mounted) {
         setState(() {
@@ -101,6 +106,89 @@ class _AuditLogViewState extends State<AuditLogView> {
   Color _colorForCategory(String category) =>
       _categoryColors[category] ?? Colors.grey.shade700;
 
+  String _fmtDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+    );
+    if (picked == null) return;
+    setState(() => _selectedDate = DateTime(picked.year, picked.month, picked.day));
+    _load();
+  }
+
+  bool get _hasActiveFilters =>
+      _filterController.text.isNotEmpty ||
+      _category.isNotEmpty ||
+      _selectedDate != null;
+
+  void _clearFilters() {
+    _filterController.clear();
+    setState(() {
+      _category = '';
+      _selectedDate = null;
+    });
+    _load();
+  }
+
+  Future<void> _confirmDelete() async {
+    final dateStr = _selectedDate != null ? _fmtDate(_selectedDate!) : null;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminare i log?'),
+        content: Text(
+          dateStr != null
+              ? 'Eliminare tutti i log del $dateStr?\nQuesta azione è irreversibile.'
+              : 'Vuoi eliminare TUTTI i log audit?\nQuesta azione è irreversibile.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Elimina',
+              style: TextStyle(color: Color(0xFFD32F2F)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+    try {
+      final deleted = await _service.deleteLogEntries(
+        startDate: dateStr,
+        endDate: dateStr,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Eliminati $deleted log')),
+      );
+      _load();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _deleting = false);
+      }
+    }
+  }
+
   int get _errorCount =>
       _entries.where((e) => e.category == 'error').length;
 
@@ -141,6 +229,16 @@ class _AuditLogViewState extends State<AuditLogView> {
                       )
                     : const Icon(Icons.download),
                 tooltip: 'Download CSV',
+              ),
+              IconButton(
+                onPressed: _deleting ? null : _confirmDelete,
+                icon: _deleting
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.delete_outline, color: Color(0xFFB71C1C)),
+                tooltip: 'Elimina log',
               ),
               IconButton(
                 onPressed: _loading ? null : _load,
@@ -184,8 +282,52 @@ class _AuditLogViewState extends State<AuditLogView> {
                   _load();
                 },
               ),
+              const SizedBox(width: 4),
+              IconButton(
+                onPressed: _pickDate,
+                icon: const Icon(Icons.calendar_month, color: Color(0xFF1976D2)),
+                tooltip: 'Filtra per data',
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                onPressed: _clearFilters,
+                icon: Icon(
+                  Icons.filter_alt_off,
+                  color: _hasActiveFilters ? const Color(0xFFB71C1C) : Colors.grey.shade400,
+                ),
+                tooltip: 'Rimuovi tutti i filtri',
+              ),
             ],
           ),
+          if (_selectedDate != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE3F2FD),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.calendar_today, size: 14, color: Color(0xFF1976D2)),
+                      const SizedBox(width: 6),
+                      Text(
+                        _fmtDate(_selectedDate!),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF1565C0),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
           if (_error != null)
             Padding(
@@ -216,19 +358,26 @@ class _AuditLogViewState extends State<AuditLogView> {
                         ),
                       ),
                     ),
-                    if (_category != 'error')
-                      TextButton(
-                        onPressed: () {
-                          setState(() => _category = 'error');
-                          _load();
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFFB71C1C),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          minimumSize: const Size(0, 32),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _category = _category == 'error' ? '' : 'error';
+                        });
+                        _load();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _category == 'error'
+                            ? const Color(0xFF1976D2)
+                            : const Color(0xFFB71C1C),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 32),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text('Show errors'),
                       ),
+                      child: Text(_category == 'error' ? 'See all' : 'Show errors'),
+                    ),
                   ],
                 ),
               ),
@@ -240,14 +389,16 @@ class _AuditLogViewState extends State<AuditLogView> {
                     ? const Center(child: Text('No log entries', style: TextStyle(color: Colors.grey)))
                     : ListView.separated(
                         itemCount: _entries.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (ctx, i) {
                           final e = _entries[i];
                           final color = _colorForCategory(e.category);
                           final isError = e.category == 'error';
                           final details = e.details ?? '';
                           final long = details.length > 120;
-                          final expanded = _expandedDetails.contains(e.id);
+                          // Errors always show their full details (traceback)
+                          // instead of a truncated preview.
+                          final expanded = isError || _expandedDetails.contains(e.id);
                           return Container(
                             color: isError ? const Color(0x14F44336) : null,
                             padding: const EdgeInsets.symmetric(vertical: 8),

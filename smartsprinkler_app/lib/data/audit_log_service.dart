@@ -36,11 +36,15 @@ class AuditLogService {
     String filter = '',
     String? category,
     int limit = 200,
+    String? startDate,
+    String? endDate,
   }) async {
     final query = <String, String>{};
     if (filter.isNotEmpty) query['filter'] = filter;
     if (category != null && category.isNotEmpty) query['category'] = category;
     if (limit != 200) query['limit'] = limit.toString();
+    if (startDate != null) query['start_date'] = startDate;
+    if (endDate != null) query['end_date'] = endDate;
 
     final uri = Uri.parse('${settings.bayesianUrl}/api/audit-log').replace(
       queryParameters: query.isEmpty ? null : query,
@@ -55,6 +59,25 @@ class AuditLogService {
         .map((e) => AuditLogEntry.fromJson(e as Map<String, dynamic>))
         .toList();
     return entries;
+  }
+
+  /// Deletes audit log entries. When a date range is supplied only the
+  /// entries within it (inclusive) are removed, otherwise everything.
+  Future<int> deleteLogEntries({String? startDate, String? endDate}) async {
+    final query = <String, String>{};
+    if (startDate != null) query['start_date'] = startDate;
+    if (endDate != null) query['end_date'] = endDate;
+
+    final uri = Uri.parse('${settings.bayesianUrl}/api/audit-log').replace(
+      queryParameters: query.isEmpty ? null : query,
+    );
+
+    final response = await http.delete(uri).timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw Exception('Audit log delete failed: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return json['deleted'] as int? ?? 0;
   }
 
   /// Downloads the audit log as a CSV file. Returns the file path where

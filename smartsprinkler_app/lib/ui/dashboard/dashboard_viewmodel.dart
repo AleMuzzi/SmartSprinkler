@@ -168,9 +168,10 @@ class DashboardViewModel extends ChangeNotifier {
         }
 
         final activePlant = json['active_plant'];
-        if (activePlant != null && activePlant != 'null') {
+        final activePlantStr = activePlant is String ? activePlant : activePlant?.toString();
+        if (activePlantStr != null && activePlantStr != 'null' && activePlantStr.isNotEmpty) {
           for (var plant in _plants) {
-            plant.isWatering = plant.target.name == activePlant;
+            plant.isWatering = plant.target.name == activePlantStr;
           }
         } else {
           for (var plant in _plants) {

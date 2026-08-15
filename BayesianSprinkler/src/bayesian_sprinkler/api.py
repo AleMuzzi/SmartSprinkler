@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from bayesian_sprinkler.audit_log import init_audit_table, log_event, get_log_entries, clear_log
+from bayesian_sprinkler.audit_log import init_audit_table, log_event, get_log_entries, delete_log_entries
 from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
 from bayesian_sprinkler.database import init_db, insert_record
 from bayesian_sprinkler.notifier import send_email_alert
@@ -201,6 +201,27 @@ def _poll_weather(st: AppState):
         logger.warning("Weather fetch failed — keeping previous cache")
 
 
+def _to_float(value) -> float | None:
+    """Coerce a value to ``float``, tolerating the text payloads the ESP
+    serialises (e.g. ``"21.5"``, ``"nan"``, ``"undef"``). Returns ``None``
+    when the value is missing or not a usable number so callers can
+    fall back to cached weather instead of crashing on a ``<`` compare.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("", "nan", "null", "none", "undef", "-"):
+            return None
+        try:
+            return float(value.strip())
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def _register_routes(app: FastAPI):
     @app.get(
         "/api/cistern",
@@ -379,9 +400,17 @@ def _register_routes(app: FastAPI):
         filter: str | None = None,
         category: str | None = None,
         limit: int = 200,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ):
         from fastapi import Query
-        rows = get_log_entries(filter_text=filter, category=category, limit=limit)
+        rows = get_log_entries(
+            filter_text=filter,
+            category=category,
+            limit=limit,
+            start_date=start_date,
+            end_date=end_date,
+        )
         return {
             "entries": [
                 {
@@ -401,11 +430,19 @@ def _register_routes(app: FastAPI):
     @app.delete(
         "/api/audit-log",
         tags=["System"],
-        summary="Clear all audit log entries",
+        summary="Clear audit log entries",
+        description=(
+            "Deletes all entries matching the optional date range "
+            "(start_date / end_date, format YYYY-MM-DD, inclusive). "
+            "Without a date range the whole log is cleared."
+        ),
     )
-    def audit_log_clear():
-        clear_log()
-        return {"status": "ok"}
+    def audit_log_clear(
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ):
+        deleted = delete_log_entries(start_date=start_date, end_date=end_date)
+        return {"status": "ok", "deleted": deleted}
 
     @app.get(
         "/api/audit-log/export",
@@ -470,9 +507,15 @@ def _register_routes(app: FastAPI):
         except Exception:
             esp_status = {}
 
-        raw_soil = float(esp_status.get("soil_moisture", 0))
-        raw_temp = float(esp_status.get("air_temperature", 25))
-        raw_humid = float(esp_status.get("air_humidity", 50))
+        raw_soil = _to_float(esp_status.get("soil_moisture")) if esp_status else None
+        raw_temp = _to_float(esp_status.get("air_temperature")) if esp_status else None
+        raw_humid = _to_float(esp_status.get("air_humidity")) if esp_status else None
+        if raw_soil is None:
+            raw_soil = 0
+        if raw_temp is None:
+            raw_temp = 25
+        if raw_humid is None:
+            raw_humid = 50
 
         soil = state.esp.discretize_soil_moisture(raw_soil)
         temp = state.esp.discretize_temperature(raw_temp)
@@ -482,7 +525,9 @@ def _register_routes(app: FastAPI):
         for plant_name in state.config["plants"]:
             sensor_idx = state.config["plants"][plant_name].get("sensor_index", 0)
             raw_sm = esp_status.get(f"soil_moisture_{sensor_idx}") if esp_status else None
-            plant_sm = float(raw_sm) if raw_sm is not None else raw_soil
+            plant_sm = _to_float(raw_sm)
+            if plant_sm is None:
+                plant_sm = raw_soil
             plant_soil = state.esp.discretize_soil_moisture(plant_sm)
 
             with state.lock:
@@ -523,8 +568,8 @@ def _register_routes(app: FastAPI):
         try:
             esp_status = state.esp.get_status()
             _capture_esp_status(state, esp_status)
-            raw_temp = esp_status.get("air_temperature")
-            raw_humid = esp_status.get("air_humidity")
+            raw_temp = _to_float(esp_status.get("air_temperature"))
+            raw_humid = _to_float(esp_status.get("air_humidity"))
         except Exception:
             pass
 
@@ -532,9 +577,9 @@ def _register_routes(app: FastAPI):
         # report usable values. Only return None if BOTH sources are empty
         # so the UI can show "--" instead of misleading fake numbers.
         if raw_temp is None or raw_temp < 0:
-            raw_temp = state._cached_weather.get("temperature")
+            raw_temp = _to_float(state._cached_weather.get("temperature"))
         if raw_humid is None or raw_humid < 0:
-            raw_humid = state._cached_weather.get("humidity")
+            raw_humid = _to_float(state._cached_weather.get("humidity"))
 
         return WeatherResponse(
             temperature=raw_temp,
@@ -562,12 +607,18 @@ def _register_routes(app: FastAPI):
         except Exception:
             pass
 
-        raw_soil_avg = float(esp_status.get("soil_moisture", 0))
-        raw_temp = float(esp_status.get("air_temperature", 25))
-        raw_humid = float(esp_status.get("air_humidity", 50))
+        raw_soil_avg = _to_float(esp_status.get("soil_moisture")) if esp_status else 0
+        raw_temp = _to_float(esp_status.get("air_temperature")) if esp_status else None
+        raw_humid = _to_float(esp_status.get("air_humidity")) if esp_status else None
+        if raw_soil_avg is None:
+            raw_soil_avg = 0
+        if raw_temp is None:
+            raw_temp = 25
+        if raw_humid is None:
+            raw_humid = 50
 
         if raw_temp < 0:
-            raw_temp = state._cached_weather.get("temperature") or 25.0
+            raw_temp = _to_float(state._cached_weather.get("temperature")) or 25.0
         if raw_humid < 0:
             raw_humid = 50.0
 
@@ -578,7 +629,9 @@ def _register_routes(app: FastAPI):
         for plant_name in state.config["plants"]:
             sensor_idx = state.config["plants"][plant_name].get("sensor_index", 0)
             raw_sm = esp_status.get(f"soil_moisture_{sensor_idx}") if esp_status else None
-            plant_sm = float(raw_sm) if raw_sm is not None else raw_soil_avg
+            plant_sm = _to_float(raw_sm)
+            if plant_sm is None:
+                plant_sm = raw_soil_avg
             plant_soil = state.esp.discretize_soil_moisture(plant_sm)
 
             with state.lock:
@@ -750,17 +803,25 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             )
         st._water_low_alert = water_low
 
-        raw_temp = float(status["air_temperature"])
-        raw_humid = float(status["air_humidity"])
-        if raw_temp < 0:
+        raw_temp = _to_float(status.get("air_temperature"))
+        raw_humid = _to_float(status.get("air_humidity"))
+        if raw_temp is None or raw_temp < 0:
+            # The ESP serialises readings as text ("nan", "undef", "21.5"…).
+            # Fall back to the cached forecast before giving up, so a single
+            # bad reading doesn't abort the whole cycle.
+            raw_temp = _to_float(wx.get("temperature"))
+        if raw_humid is None or raw_humid < 0:
+            raw_humid = None
+        if raw_temp is None:
             raise ValueError(
-                f"Inference cycle: invalid air_temperature {raw_temp} "
-                f"and no usable fallback (ESP/DHT invalid)"
-            )
-        if raw_humid < 0:
-            raise ValueError(
-                f"Inference cycle: invalid air_humidity {raw_humid} "
+                f"Inference cycle: invalid air_temperature "
+                f"{status.get('air_temperature')!r} and no usable fallback "
                 f"(ESP/DHT invalid)"
+            )
+        if raw_humid is None:
+            raise ValueError(
+                f"Inference cycle: invalid air_humidity "
+                f"{status.get('air_humidity')!r} (ESP/DHT invalid)"
             )
         temp = st.esp.discretize_temperature(raw_temp)
         humid = st.esp.discretize_humidity(raw_humid)
@@ -777,15 +838,19 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
         for plant_name, cfg in st.config["plants"].items():
             sensor_idx = cfg.get("sensor_index", 0)
             raw_sm = status.get(f"soil_moisture_{sensor_idx}")
-            plant_sm = float(raw_sm) if raw_sm is not None else float(status["soil_moisture"])
+            plant_sm = _to_float(raw_sm)
+            if plant_sm is None:
+                plant_sm = _to_float(status.get("soil_moisture"))
+            if plant_sm is None:
+                plant_sm = 0.0
             soil = st.esp.discretize_soil_moisture(plant_sm)
 
             logger.info(
                 "Inference cycle — %s: soil=%s (raw=%s), temp: %s°C, humidity: %s%%  |  "
                 "sky: %s, rain: %s  |  pump: %s  |  hour=%02d",
-                cfg["display_name"], soil, plant_sm, status["air_temperature"],
-                status["air_humidity"], wx["cloud_cover"],
-                wx["rain_forecast"], status["water_pump"], hour_now,
+                cfg["display_name"], soil, plant_sm, status.get("air_temperature"),
+                status.get("air_humidity"), wx["cloud_cover"],
+                wx["rain_forecast"], status.get("water_pump"), hour_now,
             )
 
             with st.lock:

@@ -71,10 +71,13 @@ class Sprinkler with ChangeNotifier {
     _instance._airHumidity = _parseDoubleOrNan(json['air_humidity']);
     _instance._airTemperature = _parseDoubleOrNan(json['air_temperature']);
     _instance._soilMoisture = _parseDoubleOrNan(json['soil_moisture']);
-    _instance._waterPump = json['water_pump'] ?? "off";
-    _instance._waterLowAlert = json['water_low_alert'] == "on";
-    _instance._blockedAmountMl = int.tryParse(json['blocked_amount_ml'] ?? "0") ?? 0;
-    _instance._activePlant = json['active_plant'] == "null" ? null : json['active_plant'];
+    _instance._waterPump = (json['water_pump'] ?? "off").toString();
+    _instance._waterLowAlert = json['water_low_alert'] == "on" || json['water_low_alert'] == true;
+    _instance._blockedAmountMl = int.tryParse((json['blocked_amount_ml'] ?? "0").toString()) ?? 0;
+
+    final activePlant = json['active_plant'];
+    _instance._activePlant =
+        activePlant == null || activePlant == "null" || activePlant == "" ? null : activePlant.toString();
 
     final posStr = json['rotary_position'];
     if (posStr == "uncalibrated" || posStr == null) {
