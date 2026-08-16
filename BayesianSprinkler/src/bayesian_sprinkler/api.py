@@ -15,6 +15,8 @@ from pydantic import BaseModel
 from bayesian_sprinkler.audit_log import init_audit_table, log_event, get_log_entries, delete_log_entries
 from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
 from bayesian_sprinkler.database import init_db, insert_record
+from bayesian_sprinkler.local_time import configure as configure_timezone
+from bayesian_sprinkler.local_time import now as now_local
 from bayesian_sprinkler.notifier import send_email_alert
 from bayesian_sprinkler.sensor_client import ESP32Client, WeatherClient
 
@@ -124,6 +126,7 @@ async def lifespan(app: FastAPI):
 
 def create_app(config: dict) -> FastAPI:
     state.config = config
+    configure_timezone(config.get("timezone", "Europe/Rome"))
     state.bn = SmartSprinklerBN(config["plants"])
     state.esp = ESP32Client(
         base_url=config["esp"]["base_url"],
@@ -484,7 +487,7 @@ def _register_routes(app: FastAPI):
                 buf.truncate()
 
         from datetime import datetime
-        filename = f"audit_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        filename = f"audit_log_{now_local().strftime('%Y%m%d_%H%M%S')}.csv"
         return StreamingResponse(
             csv_gen(),
             media_type="text/csv",
@@ -827,7 +830,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
         humid = st.esp.discretize_humidity(raw_humid)
 
         sim_hour = status.get("_sim_hour")
-        hour_now = int(sim_hour if sim_hour is not None else datetime.now().hour) % 24
+        hour_now = int(sim_hour if sim_hour is not None else now_local().hour) % 24
         status["_hour_now"] = hour_now
 
         triggered_plants = []

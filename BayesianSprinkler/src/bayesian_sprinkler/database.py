@@ -1,6 +1,7 @@
 import sqlite3
-from datetime import datetime
 from pathlib import Path
+
+from .local_time import now as now_local
 
 DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 DB_PATH = DB_DIR / "sprinkler.db"
@@ -45,7 +46,7 @@ def insert_record(plant_type: str, soil_moisture: str, air_temperature: str,
                (timestamp, plant_type, soil_moisture, air_temperature,
                 air_humidity, cloud_cover, rain_forecast, need_water)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (datetime.now().isoformat(), plant_type, soil_moisture,
+            (now_local().isoformat(), plant_type, soil_moisture,
              air_temperature, air_humidity, cloud_cover, rain_forecast,
              need_water),
         )

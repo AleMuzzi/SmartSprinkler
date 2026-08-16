@@ -1,8 +1,8 @@
 import sqlite3
-from datetime import datetime
 from typing import Optional
 
 from .database import get_connection
+from .local_time import now as now_local
 
 
 def init_audit_table():
@@ -28,7 +28,7 @@ def log_event(category: str, message: str, details: Optional[str] = None):
         conn.execute(
             """INSERT INTO audit_log (timestamp, category, message, details)
                VALUES (?, ?, ?, ?)""",
-            (datetime.now().isoformat(), category, message, details),
+            (now_local().isoformat(), category, message, details),
         )
         conn.commit()
 

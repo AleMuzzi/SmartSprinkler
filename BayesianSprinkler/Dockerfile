@@ -11,7 +11,7 @@ COPY src/ ./src/
 COPY config.yaml ./
 COPY scripts/ ./scripts/
 
-RUN apt-get update && apt-get install curl -y
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata curl
 
 # Supercronic: zero-dependency cron designed for containers
 ARG SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.46/supercronic-linux-amd64
@@ -28,6 +28,7 @@ COPY crontab /crontab
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
+ENV TZ=Europe/Rome
 
 EXPOSE 38080
 
