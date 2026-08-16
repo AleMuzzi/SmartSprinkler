@@ -7,6 +7,7 @@ from threading import Lock
 
 import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -162,11 +163,9 @@ async def lifespan(app: FastAPI):
         id="weather_poll",
         replace_existing=True,
     )
-    poll_s = state.config["esp"]["poll_interval"]
     state.scheduler.add_job(
         func=lambda: _inference_cycle(state),
-        trigger="interval",
-        seconds=poll_s,
+        trigger=CronTrigger(minute=4),
         id="inference_cycle",
         replace_existing=True,
     )
@@ -595,6 +594,31 @@ def _register_routes(app: FastAPI):
 
         return {"status": "ok", "plant": req.plant_type}
 
+    @app.post(
+        "/api/inference/run",
+        tags=["Inference"],
+        summary="Force a Bayesian inference cycle immediately",
+        responses={
+            200: {"description": "Inference cycle completed"},
+            503: {"description": "Inference failed (ESP unreachable or model error)"},
+        },
+    )
+    def inference_run():
+        """Trigger a full inference cycle on demand (same code path as the
+        hourly schedule). Returns which plants were watered so the UI can
+        confirm the effect without waiting for the next scheduled run."""
+        watered = _inference_cycle(state)
+        if watered is None:
+            raise HTTPException(
+                503, "Inference failed — check server/ESP logs for details"
+            )
+        log_event(
+            "inference",
+            "Manual inference triggered",
+            details=f"watered={list(watered.keys())}",
+        )
+        return {"status": "ok", "watered": watered}
+
     @app.get(
         "/api/health",
         tags=["System"],
@@ -892,15 +916,23 @@ def _register_routes(app: FastAPI):
 # ── Background jobs ─────────────────────────────────────────────────
 
 
-def _inference_cycle(st: AppState):
+def _inference_cycle(st: AppState) -> dict[str, float] | None:
+    """Run one full inference cycle and return the watered dosages.
+
+    Returns ``{plant_name: dose_seconds}`` for the plants actually watered
+    this cycle, or ``None`` when the cycle failed (error is logged). The
+    scheduled job ignores the return value; the manual ``/api/inference/run``
+    endpoint relays it to the caller.
+    """
     try:
         status = st.esp.get_status()
         _capture_esp_status(st, status)
-        _run_inference_with_status(st, status)
+        return _run_inference_with_status(st, status)
     except Exception as e:
         tb = traceback.format_exc()
         logger.exception("Inference cycle failed")
         log_event("error", f"Inference cycle failed: {e}", details=tb)
+        return None
 
 
 # Hard, model-independent floor on watering pulse volume. Any dose the BN

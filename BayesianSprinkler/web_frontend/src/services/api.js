@@ -228,6 +228,15 @@ export async function sendBayesianManualWater(plantType) {
   return res.json()
 }
 
+export async function runInference() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/inference/run`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`Inference run failed: ${res.status}`)
+  return res.json()
+}
+
 export const PLANTS = [
   { id: 'habanero', label: 'Habanero' },
   { id: 'naga_morich', label: 'Naga Morich' },

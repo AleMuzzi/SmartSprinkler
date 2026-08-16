@@ -10,7 +10,7 @@ import { AuditLog } from './components/AuditLog.jsx'
 import { HealthBar } from './components/StatusBadge.jsx'
 import { SimulationView } from './components/SimulationView.jsx'
 import { CisternCard, CisternWidget } from './components/SimulationView.jsx'
-import { getSettings } from './services/api.js'
+import { getSettings, runInference } from './services/api.js'
 
 function Toast({ message, type }) {
   const bg = type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-600' : 'bg-gray-700'
@@ -25,7 +25,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [toast, setToast] = useState(null)
   const { espData, espHealthy, waterLowAlert, error, loading } = useEspData()
-  const { plantStatuses } = usePlantStatuses()
+  const { plantStatuses, refetch: refetchPlantStatuses } = usePlantStatuses()
   const { cistern, refill: refillCistern, refetch: refetchCistern, cisternError } = useCisternStatus(getSettings().bayesianUrl)
 
   const showToast = useCallback((msg, type = 'info') => {
@@ -41,6 +41,26 @@ export default function App() {
       showToast(`Refill fallito: ${e.message}`, 'error')
     }
   }, [refillCistern, showToast])
+
+  const [inferenceRunning, setInferenceRunning] = useState(false)
+  const handleRunInference = useCallback(async () => {
+    setInferenceRunning(true)
+    try {
+      const res = await runInference()
+      const watered = Object.keys(res.watered || {})
+      showToast(
+        watered.length
+          ? `Inferenza eseguita — ${watered.join(', ')} annaffiate`
+          : 'Inferenza eseguita — nessuna pianta da annaffiare',
+        'success',
+      )
+      refetchPlantStatuses()
+    } catch (e) {
+      showToast(`Inferenza fallita: ${e.message}`, 'error')
+    } finally {
+      setInferenceRunning(false)
+    }
+  }, [refetchPlantStatuses, showToast])
 
   return (
     <div className="min-h-screen bg-smart-light">
@@ -108,7 +128,29 @@ export default function App() {
 
             {/* Bayesian insights */}
             {error ? null : (
-              <BayesianInsights plantStatuses={plantStatuses} />
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Ciclo di inferenza: ogni ora (al minuto 4); qui puoi forzarlo subito</span>
+                  <button
+                    onClick={handleRunInference}
+                    disabled={inferenceRunning}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2 transition-all"
+                  >
+                    {inferenceRunning ? (
+                      <>
+                        <svg className="w-4 h-4 spinner" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Esecuzione…
+                      </>
+                    ) : (
+                      <>▶ Inferenza ora</>
+                    )}
+                  </button>
+                </div>
+                <BayesianInsights plantStatuses={plantStatuses} />
+              </>
             )}
           </>
         )}

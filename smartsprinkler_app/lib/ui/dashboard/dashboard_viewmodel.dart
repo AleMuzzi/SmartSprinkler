@@ -382,6 +382,29 @@ class DashboardViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> runInferenceNow() async {
+    try {
+      final response = await http
+          .post(Uri.parse('${settings.bayesianUrl}/api/inference/run'))
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200) {
+        final watered = (jsonDecode(response.body)['watered'] as Map<String, dynamic>).keys;
+        await Fluttertoast.showToast(
+          msg: watered.isEmpty
+              ? 'Inferenza eseguita — nessuna pianta da annaffiare'
+              : 'Inferenza eseguita — annaffiate: ${watered.join(', ')}',
+          fontSize: 14,
+        );
+        await _fetchBayesianStatus();
+        await _fetchEspStatus();
+      } else {
+        await Fluttertoast.showToast(msg: 'Inferenza fallita: ${response.statusCode}', fontSize: 14);
+      }
+    } catch (e) {
+      await Fluttertoast.showToast(msg: 'Bayesian unreachable', fontSize: 14);
+    }
+  }
+
   static void showWaterDialog(BuildContext context, PlantData plant) {
     final vm = Provider.of<DashboardViewModel>(context, listen: false);
     showDialog(

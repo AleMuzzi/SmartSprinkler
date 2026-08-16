@@ -91,6 +91,26 @@ class _StatusHeader extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _CisternCompact(),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: vm.runInferenceNow,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2196F3),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+              icon: const Icon(Icons.science_outlined, size: 18),
+              label: const Text(
+                'Inferenza ora',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
         ],
       ),
     );
