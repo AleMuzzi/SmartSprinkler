@@ -256,13 +256,36 @@ Returns current sensor readings, rotary selector position, and active plant:
 
 Returns `{"status":"ok", "version":"<FW_VERSION>"}` where `FW_VERSION` is the automatically generated per-build firmware version (see [Firmware versioning](#firmware-versioning) below).
 
+### `GET /logs`
+
+Returns the ESP's on-device event-log tail as plain text (one JSON event per line), newest kept.
+
+- Without parameters, serves the logs of the current day (or the pre-sync `esp_nosync.log` while no clock is available).
+- `?date=YYYY-MM-DD` selects a specific day file. Wrong formats (or non-existent calendar dates like `2026-02-30`) get an HTTP `400` explaining the correct format, e.g.:
+
+```
+Invalid date format. Correct format: YYYY-MM-DD (example: ?date=2026-08-16)
+```
+
+- A valid date with no matching file returns `# esp_YYYYMMDD.log: no logs for this date`.
+- `?limit=N` caps how many trailing lines are returned (default 300). Output is limited to 64 KiB.
+
+Examples:
+
+```
+GET /logs
+GET /logs?limit=1000
+GET /logs?date=2026-08-16
+GET /logs?date=2026-08-16&limit=500
+```
+
 ## Firmware versioning
 
 Each build gets a monotonically increasing firmware version, exposed through the `/health` endpoint.
 
-- The base version lives in the committed file `firmware/version.txt` (e.g. `1.0.0`).
+- The base version lives in the committed file `firmware/version.txt` (e.g. `1.0`).
 - A per-build counter lives in `firmware/.build_count` (gitignored) and is incremented **once per successful build** of the `esp32` env.
-- The result (`<base>.<counter>`, e.g. `1.0.0.7`) is written by `firmware/extra_script.py` into the generated, gitignored header `firmware/src/esp32/fw_version.h` (`#define FW_VERSION "..."`) right before linking, via `env.AddPreAction("$BUILD_DIR/$PROGNAME$PROGSUFFIX", ...)`. The counter bump is bound to that link action so `pio run -t clean`, `pio device monitor`, etc. never advance the version.
+- The result (`<base>.<counter>`, e.g. `1.0.7`) is written by `firmware/extra_script.py` into the generated, gitignored header `firmware/src/esp32/fw_version.h` (`#define FW_VERSION "..."`) right before linking, via `env.AddPreAction("$BUILD_DIR/$PROGNAME$PROGSUFFIX", ...)`. The counter bump is bound to that link action so `pio run -t clean`, `pio device monitor`, etc. never advance the version.
 - If the header is missing (e.g. freshly cloned checkout), `src/esp32/main.cpp` falls back to `FW_VERSION "0.0.0"`.
 - `GET /health` embeds the version so any client (the Flutter app, the Bayesian server relay, `curl`) can read the running firmware version from a single well-known endpoint.
 

@@ -7,9 +7,18 @@
 # bumped only when an actual firmware build artifacts get produced, which we
 # gate here on the build action that produces the final firmware binary.
 #
-# Version scheme: <MAJOR.MINOR.PATCH>.<BUILD> where <MAJOR.MINOR.PATCH> is a
+# Version scheme: <MAJOR.MINOR>.<BUILD> where <MAJOR.MINOR> is a
 # committed base version (firmware/version.txt) and <BUILD> is a counter that
 # increases once per successful build (firmware/.build_count).
+#
+# The counter is bumped and the generated header written only right before the
+# link (ensure_version_header). But compilation happens before that, so the
+# header would otherwise describe the *previous* build (and be missing
+# entirely / fall back to 0.0.0 on a fresh checkout). We therefore also write a
+# provisional header at import time, i.e. before any source is compiled, using
+# the version the upcoming link will produce. The pre-link step then rewrites
+# the same value, so the persistent counter still advances only when a firmware
+# is actually produced.
 import os
 
 Import("env")
@@ -65,6 +74,16 @@ def _generate_header(firmware_version):
         fh.write(header)
 
 
+def _next_version():
+    return "{}.{}".format(_read_version(), _read_build_count() + 1)
+
+
+def _ensure_provisional_header(env):
+    if env.subst("$PIOENV") != "esp32":
+        return
+    _generate_header(_next_version())
+
+
 def ensure_version_header(target, source, env):
     if env.subst("$PIOENV") != "esp32":
         return
@@ -78,4 +97,5 @@ def ensure_version_header(target, source, env):
     print("FW_VERSION: {}".format(firmware_version))
 
 
+_ensure_provisional_header(env)
 env.AddPreAction("$BUILD_DIR/$PROGNAME$PROGSUFFIX", ensure_version_header)

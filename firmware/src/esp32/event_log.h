@@ -11,7 +11,7 @@
 // - Retention:       day files older than EVENT_LOG_RETENTION_DAYS are pruned.
 //
 // Each line is one JSON object:
-//   {"ts":<epoch>,"fw":"1.0.0.19","level":"info","category":"command",
+//   {"ts":<epoch>,"fw":"1.0.19","level":"info","category":"command",
 //    "event":"command_received","message":"...","details":{...}}
 //
 // Clock strategy:
@@ -20,6 +20,7 @@
 //   3. ``ts:0`` if no clock at all (still logged to a ``esp_nosync.log``).
 #define EVENT_LOG_RETENTION_DAYS 15
 #define EVENT_LOG_PENDING_MAX_BYTES (64 * 1024)
+#define EVENT_LOG_TAIL_MAX_BYTES (64 * 1024)
 
 #include <cstddef>
 
@@ -39,6 +40,15 @@ public:
     bool timeSynced() const;
     uint32_t epochSec() const;          // NTP epoch, else server-fallback, else 0
     void setServerEpoch(uint32_t epoch_sec);
+
+    // Tail of the current day file (or the pre-sync fallback) as plain text,
+    // for the remote ``GET /logs`` endpoint. Never more than
+    // EVENT_LOG_TAIL_MAX_BYTES. Empty string when no log file exists yet.
+    String recentLogsPlain(size_t max_lines) const;
+    // Tail of a specific day file ``/logs/esp_<date_compact>.log`` where
+    // ``date_compact`` is "YYYYMMDD". Empty string when that file does not
+    // exist.
+    String logsForDatePlain(const String& date_compact, size_t max_lines) const;
 
 private:
     bool rotateToToday();

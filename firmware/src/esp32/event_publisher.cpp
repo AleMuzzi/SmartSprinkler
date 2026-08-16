@@ -13,7 +13,27 @@ void EventPublisher::setServerUrl(const String& url) {
 }
 
 void EventPublisher::tick() {
-    if (_base_url.length() == 0 || _sending) {
+    if (_base_url.length() == 0) {
+        return;
+    }
+    // Watchdog for a request that never completed (e.g. a synchronous connect
+    // failure never fires the close handler). Must be checked even while
+    // ``_sending`` is true, otherwise a stuck request would freeze the
+    // publisher forever.
+    if (_sent_ms != 0 && millis() - _sent_ms > SEND_TIMEOUT_MS) {
+        Serial.printf("pub: request stuck (%.0fs), resetting client\n",
+                      SEND_TIMEOUT_MS / 1000.0);
+        _sending = false;
+        _request = nullptr;
+        _sent_ms = 0;
+        if (_backoff_ms < MAX_BACKOFF_MS) {
+            _backoff_ms *= 2;
+        }
+        if (_backoff_ms > MAX_BACKOFF_MS) {
+            _backoff_ms = MAX_BACKOFF_MS;
+        }
+    }
+    if (_sending) {
         return;
     }
     if (WiFi.status() != WL_CONNECTED) {
@@ -24,14 +44,6 @@ void EventPublisher::tick() {
         return;
     }
     _last_attempt_ms = millis();
-
-    // Watchdog: if a connect fails synchronously the client never fires a close
-    // event, so back off and let the caller retry.
-    if (_sent_ms != 0 && millis() - _sent_ms > SEND_TIMEOUT_MS) {
-        _sending = false;
-        _request = nullptr;
-        _sent_ms = 0;
-    }
 
     sendBatch();
 }
@@ -57,13 +69,16 @@ void EventPublisher::sendBatch() {
 
     _sent_ms = millis();
     _sending = true;
+    Serial.printf("pub: sending %d event(s) to %s\n", (int)n, _request_uri.c_str());
 }
 
 void EventPublisher::onResponse(MongooseHttpClientResponse* resp) {
     if (resp == nullptr) {
+        Serial.println("pub: empty response");
         return;
     }
     const int code = resp->respCode();
+    Serial.printf("pub: HTTP %d\n", code);
 
     if (code >= 200 && code < 300) {
         // Server accepted the batch: drop the acked events.
@@ -96,4 +111,5 @@ void EventPublisher::onClose() {
     _sending = false;
     _request = nullptr;
     _sent_ms = 0;
+    Serial.println("pub: connection closed");
 }

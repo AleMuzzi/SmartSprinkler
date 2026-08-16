@@ -235,3 +235,92 @@ void EventLog::ackPending(size_t count) {
     out.flush();
     out.close();
 }
+
+// Appends the trailing ``max_lines`` lines of ``f`` (newest kept) into ``out``,
+// bound to EVENT_LOG_TAIL_MAX_BYTES. Scans backwards so it never holds the whole
+// log in RAM.
+static bool readTail(File& f, String& out, size_t max_lines) {
+    const uint32_t CHUNK = 256;
+    char buf[CHUNK];
+    const uint32_t size = f.size();
+    uint32_t pos = size;
+    uint32_t window_start = 0;
+    size_t newlines_seen = 0;
+    uint32_t bytes_scanned = 0;
+    bool found = false;
+
+    while (pos > 0 && !found) {
+        const uint32_t len = (pos > CHUNK) ? CHUNK : pos;
+        pos -= len;
+        const uint32_t at = pos;
+        if (!f.seek(at)) {
+            return false;
+        }
+        const size_t got = f.read((uint8_t*)buf, len);
+        bytes_scanned += got;
+        for (int32_t i = static_cast<int32_t>(got) - 1; i >= 0; --i) {
+            if (buf[i] == '\n') {
+                newlines_seen++;
+                // We keep the last ``max_lines`` lines, i.e. everything after
+                // the (max_lines+1)-th newline counted from the end.
+                if (newlines_seen == max_lines + 1) {
+                    window_start = at + i + 1;
+                    found = true;
+                    break;
+                }
+            }
+            if (bytes_scanned >= EVENT_LOG_TAIL_MAX_BYTES) {
+                window_start = at + i + 1;
+                found = true;
+                break;
+            }
+        }
+    }
+
+    if (!f.seek(window_start)) {
+        return false;
+    }
+    while (f.available()) {
+        const size_t got = f.read((uint8_t*)buf, CHUNK);
+        if (got == 0) break;
+        out.concat(buf, got);
+        if (out.length() >= EVENT_LOG_TAIL_MAX_BYTES) break;
+    }
+    return true;
+}
+
+static String readLogFileTail(const String& path, size_t max_lines) {
+    File f = LittleFS.open(path.c_str(), FILE_READ);
+    if (!f) {
+        return "";
+    }
+    String out = String("# ") + path + " (fw " + FW_VERSION + ")\n";
+    if (f.size() > 0) {
+        readTail(f, out, max_lines);
+    }
+    f.close();
+    return out;
+}
+
+String EventLog::recentLogsPlain(size_t max_lines) const {
+    String today = localDateStr();
+    if (today.length() == 0) {
+        today = "nosync";
+    }
+    String path = String(LOG_DIR) + "/esp_" + today + ".log";
+    String out;
+    File probe = LittleFS.open(path.c_str(), FILE_READ);
+    const bool have = probe && probe.size() > 0;
+    if (probe) probe.close();
+    if (have) {
+        out = readLogFileTail(path, max_lines);
+    } else if (today != "nosync") {
+        // Today's file is empty/missing: serve the pre-sync file instead.
+        out = readLogFileTail(String(LOG_DIR) + "/esp_nosync.log", max_lines);
+    }
+    return out;
+}
+
+String EventLog::logsForDatePlain(const String& date_compact, size_t max_lines) const {
+    return readLogFileTail(String(LOG_DIR) + "/esp_" + date_compact + ".log", max_lines);
+}

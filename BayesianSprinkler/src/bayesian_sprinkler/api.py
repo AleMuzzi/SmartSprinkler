@@ -523,15 +523,23 @@ def _register_routes(app: FastAPI):
             raise HTTPException(400, "Expected a .bin firmware image")
         if file.size and file.size > OTA_MAX_BYTES:
             raise HTTPException(400, f"Firmware too large (max {OTA_MAX_BYTES} bytes)")
+        old_version = None
+        try:
+            old_version = state.esp.get_firmware_version()
+        except Exception:
+            pass  # optional: version relay must never block the update
         try:
             state.esp.ota_update(file.filename or "firmware.bin", file.file)
         except Exception as e:
             logger.error("OTA upload to ESP failed: %s", e)
             log_event("ota", "Firmware update failed",
-                      details=f"filename={file.filename} error={e}")
+                      details=(
+                          f"filename={file.filename} old_fw={old_version} "
+                          f"error={e}"
+                      ))
             raise HTTPException(502, f"ESP unreachable or update failed: {e}")
         log_event("ota", "Firmware update completed",
-                  details=f"filename={file.filename}")
+                  details=f"filename={file.filename} old_fw={old_version}")
         return {"status": "ok", "filename": file.filename}
 
     @app.post(

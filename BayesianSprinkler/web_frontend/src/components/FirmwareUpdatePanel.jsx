@@ -25,13 +25,15 @@ export function FirmwareUpdatePanel({ onMessage }) {
   }
 
   function findVersionInBytes(bytes) {
-  // The version is baked into the binary as ASCII (boot log + /health body).
-  // Scan for the "major.minor.patch.build" pattern (e.g. 1.0.0.17).
-  const decoder = new TextDecoder('latin1')
-  const text = decoder.decode(bytes)
-  const m = text.match(/\d+\.\d+\.\d+\.\d+/)
-  return m ? m[0] : null
-}
+    // Every build embeds a "SSFWVER:<major.minor.build>" sentinel in .rodata
+    // (see FW_IMAGE_VERSION_MARKER in CommandManager.cpp), so scan for that
+    // marker instead of a bare dotted pattern — a generic 4-part regex would
+    // also match unrelated constants like Mongoose's "8.8.8.8" DNS probe.
+    const decoder = new TextDecoder('latin1')
+    const text = decoder.decode(bytes)
+    const m = text.match(/SSFWVER:(\d+\.\d+\.\d+)/)
+    return m ? m[1] : null
+  }
 
 const readFileVersion = (selected) => {
     const fileReader = new FileReader()

@@ -21,6 +21,7 @@
 #include <ESP32Servo.h>
 #include <HardwareSerial.h>
 #include <Preferences.h>
+#include <esp_system.h>
 #include <esp_task_wdt.h>
 
 #include "esp32/event_log.h"
@@ -40,6 +41,8 @@
 #ifndef FW_VERSION
 #define FW_VERSION "0.0.0"
 #endif
+
+extern "C" const char FW_IMAGE_VERSION_MARKER[];
 
 #define PIN_PUMP_RELAY 12
 #define PIN_ROTARY_SERVO 13
@@ -138,6 +141,22 @@ void log_event_details(const char* category, const char* level, const char* even
     Serial.printf("[%s] %s\n", event, message);
 }
 
+static const char* reset_reason_str() {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:   return "power_on";
+        case ESP_RST_EXT:       return "external_pin";
+        case ESP_RST_SW:        return "software_reset";
+        case ESP_RST_PANIC:     return "exception_panic";
+        case ESP_RST_INT_WDT:   return "interrupt_watchdog";
+        case ESP_RST_TASK_WDT:  return "task_watchdog";
+        case ESP_RST_WDT:       return "watchdog";
+        case ESP_RST_DEEPSLEEP: return "deep_sleep";
+        case ESP_RST_BROWNOUT:  return "brownout";
+        case ESP_RST_SDIO:      return "sdio";
+        default:                return "unknown";
+    }
+}
+
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg);
@@ -177,8 +196,19 @@ void setup() {
     init_time_ntp();
 
     event_log.begin();
-    event_publisher.setServerUrl(load_server_url());
-    log_event("system", "info", "boot", String("Smart Sprinkler firmware " + String(FW_VERSION)).c_str());
+    String server_url = load_server_url();
+    event_publisher.setServerUrl(server_url);
+    Serial.print("Server URL: ");
+    Serial.println(server_url.length() ? server_url
+                                       : "(unset - publishing disabled; use 'SERVER <url>')");
+    if (server_url.length() == 0) {
+        log_event("network", "warn", "publisher_disabled",
+                  "No server URL configured: ESP event publishing disabled");
+    }
+    log_event_details(
+        "system", "info", "boot",
+        String("Smart Sprinkler firmware " + String(FW_VERSION)).c_str(),
+        (String("{\"reset_reason\":\"") + reset_reason_str() + "\"}").c_str());
 
     // Camera::init();
 
@@ -225,6 +255,8 @@ void setup() {
 
     Serial.print("Smart Sprinkler firmware ");
     Serial.println(FW_VERSION);
+    Serial.print("firmware marker: ");
+    Serial.println(FW_IMAGE_VERSION_MARKER);
 
     log_event("system", "info", "ready", "System fully initialized");
     Serial.println("\n\nSystem Fully Initialized!");
@@ -246,6 +278,16 @@ void loop() {
             nano_lost_logged = true;
             nano_connected = false;
             log_event("sensor", "warn", "sensor_nano_lost", "Nano sensor data lost");
+        } else if (!nano_connected && !nano_lost_logged && last_nano_data_ms != 0 &&
+                   millis() - last_nano_data_ms > 30000) {
+            // Received data at some point but nothing for 30s.
+            nano_lost_logged = true;
+            log_event("sensor", "warn", "sensor_nano_lost", "Nano sensor data lost");
+        } else if (!nano_connected && !nano_lost_logged && last_nano_data_ms == 0 &&
+                   millis() > 60000) {
+            // Never received a single line since boot — Nano/UART unreachable.
+            nano_lost_logged = true;
+            log_event("sensor", "warn", "sensor_nano_no_data", "No Nano sensor data since boot");
         }
 
         Serial.printf("[%lu] T=%.1f H=%.1f SM=[%d,%d,%d,%d] WL=%s\n",
@@ -274,6 +316,86 @@ static void sendCorsJson(MongooseHttpServerRequest *req, int code, const char *c
     resp->setContentType("application/json");
     resp->write((const uint8_t*)content, strlen(content));
     req->send(resp);
+}
+
+static void sendPlainText(MongooseHttpServerRequest *req, int code, const String& text) {
+    auto *resp = req->beginResponseStream();
+    resp->setCode(code);
+    resp->addHeader("Access-Control-Allow-Origin", "*");
+    resp->setContentType("text/plain; charset=utf-8");
+    resp->write((const uint8_t*)text.c_str(), text.length());
+    req->send(resp);
+}
+
+static String getQueryParam(const String& query, const char* name) {
+    const String key = String(name) + "=";
+    int pos = 0;
+    while (pos < query.length()) {
+        const int amp = query.indexOf('&', pos);
+        const String kv = (amp < 0) ? query.substring(pos) : query.substring(pos, amp);
+        if (kv.startsWith(key)) {
+            return kv.substring(key.length());
+        }
+        if (amp < 0) break;
+        pos = amp + 1;
+    }
+    return "";
+}
+
+// Parses "YYYY-MM-DD" into the compact "YYYYMMDD" used for the day-file names.
+// Returns "" when the value is malformed or not a real calendar date.
+static String parseLogDate(const String& value) {
+    if (value.length() != 10 || value[4] != '-' || value[7] != '-') {
+        return "";
+    }
+    for (int i = 0; i < 10; i++) {
+        if (i == 4 || i == 7) continue;
+        if (value[i] < '0' || value[i] > '9') return "";
+    }
+    const int year = value.substring(0, 4).toInt();
+    const int month = value.substring(5, 7).toInt();
+    const int day = value.substring(8, 10).toInt();
+    if (month < 1 || month > 12 || day < 1) return "";
+    static const uint8_t days_in_month[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    int max_day = days_in_month[month - 1];
+    if (month == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) {
+        max_day = 29;
+    }
+    if (day > max_day) return "";
+    return value.substring(0, 4) + value.substring(5, 7) + value.substring(8, 10);
+}
+
+static void sendLogsPlain(MongooseHttpServerRequest *req) {
+    const String query = req->queryString().toString();
+
+    // ``?limit=N`` controls how many trailing lines are returned.
+    size_t limit = 300;
+    const String limit_str = getQueryParam(query, "limit");
+    if (limit_str.length() > 0) {
+        const long parsed = limit_str.toInt();
+        if (parsed > 0) limit = static_cast<size_t>(parsed);
+    }
+
+    // ``?date=YYYY-MM-DD`` selects a specific day file; without it the current
+    // day (or pre-sync) logs are returned.
+    const String date_value = getQueryParam(query, "date");
+    if (date_value.length() > 0) {
+        const String compact = parseLogDate(date_value);
+        if (compact.length() == 0) {
+            sendPlainText(req, 400,
+                          "Invalid date format. Correct format: YYYY-MM-DD "
+                          "(example: ?date=2026-08-16)\n");
+            return;
+        }
+        String text = event_log.logsForDatePlain(compact, limit);
+        if (text.length() == 0) {
+            text = String("# esp_") + compact + ".log: no logs for this date\n";
+        }
+        sendPlainText(req, 200, text);
+        return;
+    }
+
+    sendPlainText(req, 200, event_log.recentLogsPlain(limit));
 }
 
 void setup_command_routes() {
@@ -343,6 +465,13 @@ void setup_command_routes() {
 
                     String statusJson = hashtable_to_string(status);
                     sendCorsJson(req, 200, statusJson.c_str());
+                }
+            });
+    routes.put("/logs", Route{
+                .http_method = HTTP_GET,
+                .from_json = nullptr,
+                .handler = [](MongooseHttpServerRequest *req, const std::shared_ptr<ICanBeDeserialized>& command) {
+                    sendLogsPlain(req);
                 }
             });
     command_manager.setup_routes(routes);
@@ -497,14 +626,31 @@ static void parse_nano_line(const char* line) {
         } else {
             water_low_alert = low;
         }
-        const bool valid = (temp != -1 && hum != -1);
-        if (!valid && prev_sensor_reading_valid && millis() - last_sensor_warn_ms > 60000) {
-            last_sensor_warn_ms = millis();
-            log_event("sensor", "warn", "sensor_invalid_reading", "Invalid temperature/humidity reading from Nano");
+        const bool temp_ok = (temp != -1);
+        const bool hum_ok = (hum != -1);
+        const bool fully_valid = temp_ok && hum_ok;
+        if (!fully_valid) {
+            // Log on the valid→invalid transition and then every ~15s while the
+            // problem persists, always with the values + raw line so we can tell
+            // whether the Nano is sending -1 or the parse is failing.
+            if (prev_sensor_reading_valid || millis() - last_sensor_warn_ms > 15000) {
+                last_sensor_warn_ms = millis();
+                const String details = String("{\"temp\":") + String(temp, 2) +
+                    ",\"hum\":" + String(hum, 2) +
+                    ",\"raw\":\"" + String(line) + "\"}";
+                log_event_details("sensor", "warn", "sensor_invalid_reading",
+                                  "Invalid temperature/humidity reading from Nano",
+                                  details.c_str());
+            }
         }
-        prev_sensor_reading_valid = valid;
-        if (valid) {
+        prev_sensor_reading_valid = fully_valid;
+        // Update each channel independently: a single bad reading on one
+        // sensor (e.g. an intermittent DHT humidity drop-out) must not freeze
+        // the other channel on its previous value.
+        if (temp_ok) {
             air_temperature = temp;
+        }
+        if (hum_ok) {
             air_humidity = hum;
         }
         last_nano_data_ms = millis();
@@ -512,9 +658,11 @@ static void parse_nano_line(const char* line) {
             nano_lost_logged = false;
         }
     } else {
-        if (millis() - last_sensor_warn_ms > 60000) {
+        if (millis() - last_sensor_warn_ms > 15000) {
             last_sensor_warn_ms = millis();
-            log_event("sensor", "warn", "sensor_nano_parse_error", "Malformed Nano sensor line");
+            const String details = String("{\"raw\":\"") + String(line) + "\"}";
+            log_event_details("sensor", "warn", "sensor_nano_parse_error",
+                              "Malformed Nano sensor line", details.c_str());
         }
     }
 }
