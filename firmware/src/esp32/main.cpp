@@ -23,6 +23,17 @@
 #include <Preferences.h>
 #include <esp_task_wdt.h>
 
+#include "esp32/event_log.h"
+#include "esp32/event_publisher.h"
+#include "esp32/log.h"
+
+#if __has_include("server_config.h")
+#include "server_config.h"
+#endif
+#ifndef SMARTSPRINKLER_SERVER_URL
+#define SMARTSPRINKLER_SERVER_URL ""
+#endif
+
 #if __has_include("fw_version.h")
 #include "fw_version.h"
 #endif
@@ -106,6 +117,27 @@ int calibration_step = 0;
 bool calibration_all_success = true;
 unsigned long calibration_moved_at_ms = 0;
 
+EventLog event_log;
+EventPublisher event_publisher(&event_log);
+
+// Edge detection for sensor-derived alerts.
+bool prev_water_low_alert = false;
+bool prev_sensor_reading_valid = true;
+uint32_t last_sensor_warn_ms = 0;
+uint32_t last_nano_data_ms = 0;
+bool nano_lost_logged = false;
+
+void log_event(const char* category, const char* level, const char* event, const char* message) {
+    event_log.append(category, level, event, message);
+    Serial.printf("[%s] %s\n", event, message);
+}
+
+void log_event_details(const char* category, const char* level, const char* event,
+                       const char* message, const char* details_json) {
+    event_log.appendDetails(category, level, event, message, details_json);
+    Serial.printf("[%s] %s\n", event, message);
+}
+
 void startCameraServer();
 void reply_invalid_payload(MongooseHttpServerRequest *req);
 bool process_command(const std::shared_ptr<Command> &command, String& error_msg);
@@ -122,6 +154,8 @@ void load_wifi_credentials();
 void on_wifi_connected(WiFiEvent_t event);
 void on_wifi_disconnected(WiFiEvent_t event);
 void handle_serial_command();
+void init_time_ntp();
+String load_server_url();
 
 void setup_command_routes();
 
@@ -139,6 +173,12 @@ void setup() {
     esp_task_wdt_add(NULL);
 
     load_wifi_credentials();
+
+    init_time_ntp();
+
+    event_log.begin();
+    event_publisher.setServerUrl(load_server_url());
+    log_event("system", "info", "boot", String("Smart Sprinkler firmware " + String(FW_VERSION)).c_str());
 
     // Camera::init();
 
@@ -162,9 +202,11 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
         WiFiAddr = WiFi.localIP().toString();
         Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
+        log_event("network", "info", "wifi_connected", ("WiFi connected, IP " + WiFiAddr).c_str());
     } else {
         Serial.println("\n! WiFi not connected — restarting connection in background (reconnect handler active).");
         WiFiAddr = String(hostname) + ".local";
+        log_event("network", "warn", "wifi_connect_failed", "WiFi not connected at boot");
     }
 
     water_pump.switch_off();
@@ -184,6 +226,7 @@ void setup() {
     Serial.print("Smart Sprinkler firmware ");
     Serial.println(FW_VERSION);
 
+    log_event("system", "info", "ready", "System fully initialized");
     Serial.println("\n\nSystem Fully Initialized!");
     Serial.println("-------------------------------");
 }
@@ -199,6 +242,12 @@ void loop() {
         previousMillis = currentMillis;
         read_nano_soil_moistures();
 
+        if (nano_connected && !nano_lost_logged && millis() - last_nano_data_ms > 6000) {
+            nano_lost_logged = true;
+            nano_connected = false;
+            log_event("sensor", "warn", "sensor_nano_lost", "Nano sensor data lost");
+        }
+
         Serial.printf("[%lu] T=%.1f H=%.1f SM=[%d,%d,%d,%d] WL=%s\n",
             currentMillis / 1000,
             air_temperature, air_humidity,
@@ -212,6 +261,7 @@ void loop() {
     }
 
     tick_dispensing();
+    event_publisher.tick();
     handle_serial_command();
 
     delay(10);
@@ -253,11 +303,21 @@ void setup_command_routes() {
                     }
 
                     String error_msg;
+                    const String details =
+                        String("{\"action\":\"") + Action::to_string(curr_command->get_action()) +
+                        "\",\"target\":\"" + Target::to_string(curr_command->get_target()) +
+                        "\",\"amount\":" + String(curr_command->get_amount()) +
+                        ",\"force\":" + (curr_command->get_force() ? "true" : "false") + "}";
+
+                    log_event_details("command", "info", "command_received", "Command received", details.c_str());
+
                     if (process_command(curr_command, error_msg)) {
+                        log_event_details("command", "info", "command_accepted", "Command accepted", details.c_str());
                         sendCorsJson(req, 200, R"({"status":"ok"})");
                         return;
                     }
 
+                    log_event_details("command", "warn", "command_rejected", error_msg.c_str(), details.c_str());
                     sendCorsJson(req, 400, (String(R"({"status":"error","error_code":"invalid_command","message":")") + error_msg + "\"}").c_str());
                 }
             });
@@ -322,6 +382,7 @@ void move_servo_to_position(int position) {
 
 void begin_calibration() {
     Serial.println("Starting rotary calibration (non-blocking)...");
+    log_event("system", "info", "calibration_started", "Rotary calibration started");
     calibration_in_progress = true;
     calibration_step = 0;
     calibration_all_success = true;
@@ -369,9 +430,11 @@ void tick_calibration() {
         calibration_in_progress = false;
         if (calibration_all_success) {
             rotary_calibrated = true;
+            log_event("system", "info", "calibration_completed", "Rotary calibration SUCCESS");
             Serial.println("Rotary calibration: SUCCESS — all positions verified");
         } else {
             rotary_calibrated = false;
+            log_event("system", "warn", "calibration_partial", "Rotary calibration PARTIAL — using software tracking");
             Serial.println("Rotary calibration: PARTIAL — using software tracking");
         }
         rotary_current_position = 0;
@@ -422,9 +485,37 @@ static void parse_nano_line(const char* line) {
         soil_moisture_raw[1] = s1;
         soil_moisture_raw[2] = s2;
         soil_moisture_raw[3] = s3;
-        water_low_alert = (water_ok == 0);
-        if (temp != -1) air_temperature = temp;
-        if (hum != -1) air_humidity = hum;
+        const bool low = (water_ok == 0);
+        if (low != prev_water_low_alert) {
+            prev_water_low_alert = low;
+            water_low_alert = low;
+            if (low) {
+                log_event("alert", "warn", "water_low_on", "Water level low (float switch)");
+            } else {
+                log_event("alert", "info", "water_low_off", "Water level restored");
+            }
+        } else {
+            water_low_alert = low;
+        }
+        const bool valid = (temp != -1 && hum != -1);
+        if (!valid && prev_sensor_reading_valid && millis() - last_sensor_warn_ms > 60000) {
+            last_sensor_warn_ms = millis();
+            log_event("sensor", "warn", "sensor_invalid_reading", "Invalid temperature/humidity reading from Nano");
+        }
+        prev_sensor_reading_valid = valid;
+        if (valid) {
+            air_temperature = temp;
+            air_humidity = hum;
+        }
+        last_nano_data_ms = millis();
+        if (nano_lost_logged) {
+            nano_lost_logged = false;
+        }
+    } else {
+        if (millis() - last_sensor_warn_ms > 60000) {
+            last_sensor_warn_ms = millis();
+            log_event("sensor", "warn", "sensor_nano_parse_error", "Malformed Nano sensor line");
+        }
     }
 }
 
@@ -445,6 +536,8 @@ void read_nano_soil_moistures() {
     }
     if (!nano_connected && nano_line_idx > 0) {
         nano_connected = true;
+        nano_lost_logged = false;
+        log_event("sensor", "info", "sensor_nano_connected", "Nano sensor data received");
         Serial.println("Nano sensor data received");
     }
     const int avg_raw = (soil_moisture_raw[0] + soil_moisture_raw[1] +
@@ -520,6 +613,9 @@ void tick_dispensing() {
         if (dispensing_specific) {
             dispensing_start_ms = now;
         }
+        const String details = String("{\"target\":\"") + target_to_string(active_target) +
+                               "\",\"amount\":" + String(dispensing_target_ml) + "}";
+        log_event_details("command", "info", "watering_started", "Pump switched ON", details.c_str());
         Serial.println("Pump switched ON (after servo settle).");
     }
 
@@ -527,9 +623,12 @@ void tick_dispensing() {
         const unsigned long elapsed_ms = now - dispensing_start_ms;
         const unsigned long duration_ms = (static_cast<unsigned long>(dispensing_target_ml) * 60000UL) / FLOW_RATE_ML_PER_MIN;
         if (elapsed_ms >= duration_ms) {
+            const String details = String("{\"target\":\"") + target_to_string(active_target) +
+                                   "\",\"amount\":" + String(dispensing_target_ml) + "}";
             dispensing_specific = false;
             dispensing_target_ml = 0;
             water_pump.switch_off();
+            log_event_details("command", "info", "watering_completed", "Auto-stop: target amount dispensed", details.c_str());
             Serial.println("Auto-stop: target amount dispensed.");
         }
     }
@@ -545,7 +644,24 @@ void load_wifi_credentials() {
         prefs.putString("ssid", wifi_ssid);
         prefs.putString("password", wifi_password);
     }
+    prefs.end();
     Serial.println("WiFi credentials loaded from NVS/local config.");
+}
+
+void init_time_ntp() {
+    // Europe/Rome with DST. Without NTP the ESP falls back to the server clock
+    // (see EventPublisher / EventLog::setServerEpoch).
+    configTzTime("CET-1CEST-2,M3.5.0/2,M10.5.0/3", "pool.ntp.org", "time.google.com");
+}
+
+String load_server_url() {
+    prefs.begin("server", false);
+    String url = prefs.getString("url", SMARTSPRINKLER_SERVER_URL);
+    if (url.length() == 0) {
+        url = SMARTSPRINKLER_SERVER_URL;
+    }
+    prefs.end();
+    return url;
 }
 
 void on_wifi_connected(WiFiEvent_t event) {
@@ -553,12 +669,14 @@ void on_wifi_connected(WiFiEvent_t event) {
     Serial.print("WiFi connected: ");
     Serial.println(WiFiAddr);
     Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
+    log_event("network", "info", "wifi_connected", ("WiFi connected, IP " + WiFiAddr).c_str());
 }
 
 void on_wifi_disconnected(WiFiEvent_t event) {
     WiFiAddr = String(hostname) + ".local";
     Serial.println("WiFi disconnected — attempting to reconnect...");
     WiFi.reconnect();
+    log_event("network", "warn", "wifi_disconnected", "WiFi disconnected");
 }
 
 void handle_serial_command() {
@@ -582,18 +700,35 @@ void handle_serial_command() {
                             const String new_ssid = line.substring(first_space + 1, second_space);
                             const String new_password = line.substring(second_space + 1);
                             if (new_ssid.length() > 0 && new_password.length() > 0) {
+                                prefs.begin("wifi", false);
                                 prefs.putString("ssid", new_ssid);
                                 prefs.putString("password", new_password);
                                 wifi_ssid = new_ssid;
                                 wifi_password = new_password;
+                                prefs.end();
                                 Serial.println("WiFi credentials updated. Reconnecting...");
                                 WiFi.disconnect();
                                 WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
                             }
                         }
                     }
+                } else if (line.startsWith("SERVER")) {
+                    int first_space = line.indexOf(' ');
+                    if (first_space > 0) {
+                        const String new_url_line = line.substring(first_space + 1);
+                        String new_url = new_url_line;
+                        new_url.trim();
+                        if (new_url.length() > 0) {
+                            prefs.begin("server", false);
+                            prefs.putString("url", new_url);
+                            prefs.end();
+                            event_publisher.setServerUrl(new_url);
+                            log_event("network", "info", "server_url_updated", ("Server URL updated: " + new_url).c_str());
+                            Serial.println("Server URL updated.");
+                        }
+                    }
                 } else {
-                    Serial.println("Unknown command. Usage: WIFI <ssid> <password>");
+                    Serial.println("Unknown command. Usage: WIFI <ssid> <password> | SERVER <url>");
                 }
             }
             line = "";

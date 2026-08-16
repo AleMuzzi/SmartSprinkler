@@ -24,6 +24,7 @@ public:
     Value get() const { return value; }
 
     static Action from_string(const char* str, bool& success);
+    static const char* to_string(Value value);
 
 private:
     Value value;
@@ -44,6 +45,7 @@ public:
     Value get() const { return value; }
 
     static Target from_string(const char* str, bool& success);
+    static const char* to_string(Value value);
 
 private:
     Value value;

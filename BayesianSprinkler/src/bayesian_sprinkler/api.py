@@ -12,7 +12,16 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from bayesian_sprinkler.audit_log import init_audit_table, log_event, get_log_entries, delete_log_entries
+from bayesian_sprinkler.audit_log import (
+    init_audit_table,
+    log_event,
+    get_log_entries,
+    delete_log_entries,
+    init_esp_events_table,
+    insert_esp_event,
+    get_all_log_entries,
+    delete_esp_events_older_than,
+)
 from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
 from bayesian_sprinkler.database import init_db, insert_record
 from bayesian_sprinkler.local_time import configure as configure_timezone
@@ -110,12 +119,42 @@ class DashboardResponse(BaseModel):
     pump_on: bool
 
 
+# ── ESP event-log model ──────────────────────────────────────────────
+
+# Categories the ESP is allowed to report. Anything else is rejected so a buggy
+# or outdated firmware cannot spam arbitrary rows into esp_events.
+_VALID_EVENT_CATEGORIES = {
+    "system", "network", "calibration", "sensor", "command",
+    "watering", "water_low", "ota", "error", "alert",
+}
+
+
+class EspEvent(BaseModel):
+    ts: int | None = None          # epoch seconds (UTC) as clocked by the ESP
+    fw: str | None = None
+    level: str = "info"
+    category: str = "system"
+    event: str = "unknown"
+    message: str = ""
+    details: dict | list | str | None = None
+
+
+class EspEventsBatch(BaseModel):
+    events: list[EspEvent]
+
+
 # ── Lifespan ────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     init_audit_table()
+    init_esp_events_table()
+    # 15-day on-server retention for ESP events (matches the firmware's own
+    # on-device rotation).
+    deleted = delete_esp_events_older_than(15)
+    if deleted:
+        logger.info("Pruned %d stale ESP events (retention 15 days)", deleted)
     state.scheduler = BackgroundScheduler()
     state.scheduler.add_job(
         func=lambda: _poll_weather(state),
@@ -321,6 +360,153 @@ def _register_routes(app: FastAPI):
     def esp_firmware_version():
         version = state.esp.get_firmware_version()
         return {"version": version if version is not None else "-"}
+
+    @app.post(
+        "/api/esp/events",
+        tags=["ESP"],
+        summary="Ingest ESP event-log batches (pushed by the firmware)",
+        responses={
+            200: {
+                "description": "Accepted event count + server time (clock fallback for the ESP)",
+            },
+        },
+    )
+    def esp_events_push(batch: EspEventsBatch):
+        accepted = 0
+        for ev in batch.events:
+            if ev.category not in _VALID_EVENT_CATEGORIES:
+                continue
+            insert_esp_event(ev.model_dump(exclude_none=True))
+            accepted += 1
+        # ``server_time`` doubles as a NTP-free clock source for the ESP when
+        # it can't reach an NTP server (see EventPublisher on the firmware).
+        return {"accepted": accepted, "server_time": int(time.time())}
+
+    @app.get(
+        "/api/logs",
+        tags=["System"],
+        summary="Audit + ESP event log (combined or per-source)",
+        responses={200: {"description": "Log entries, newest first, each with a source tag"}},
+    )
+    def logs(
+        source: str = "all",
+        filter: str | None = None,
+        category: str | None = None,
+        limit: int = 200,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ):
+        rows = get_all_log_entries(
+            source=source,
+            filter_text=filter,
+            category=category,
+            limit=limit,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return {
+            "entries": [
+                {
+                    "id": row["id"],
+                    "timestamp": row["timestamp"],
+                    "source": row["source"],
+                    "category": row["category"],
+                    "message": row["message"],
+                    "details": row["details"],
+                    "level": row["level"],
+                    "event": row["event"],
+                    "fw": row["fw"],
+                }
+                for row in rows
+            ],
+            "count": len(rows),
+            "source": source,
+            "filter": filter,
+            "category": category,
+        }
+
+    @app.delete(
+        "/api/logs",
+        tags=["System"],
+        summary="Clear log entries (server, ESP, or both)",
+        description=(
+            "Deletes entries matching the optional date range (start_date / "
+            "end_date, format YYYY-MM-DD, inclusive). ``source`` selects "
+            "which log is affected: server, esp, or all. Without a date range "
+            "the selected log(s) are fully cleared."
+        ),
+    )
+    def logs_clear(
+        source: str = "all",
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ):
+        from bayesian_sprinkler.audit_log import (
+            delete_log_entries as _delete_server_log,
+            delete_esp_events,
+        )
+        deleted = 0
+        if source in ("all", "server"):
+            deleted += _delete_server_log(start_date=start_date, end_date=end_date)
+        if source in ("all", "esp"):
+            deleted += delete_esp_events(start_date=start_date, end_date=end_date)
+        return {"status": "ok", "deleted": deleted, "source": source}
+
+    @app.get(
+        "/api/logs/export",
+        tags=["System"],
+        summary="Download combined log as CSV",
+        responses={
+            200: {
+                "description": "CSV file (server + ESP events)",
+                "content": {"text/csv": {}},
+            },
+        },
+    )
+    def logs_export(
+        source: str = "all",
+        filter: str | None = None,
+        category: str | None = None,
+    ):
+        from fastapi.responses import StreamingResponse
+        import csv
+        import io
+
+        rows = get_all_log_entries(
+            source=source, filter_text=filter, category=category, limit=1_000_000
+        )
+
+        def csv_gen():
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(
+                ["id", "timestamp", "source", "category", "level", "event", "fw", "message", "details"]
+            )
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+            for row in rows:
+                writer.writerow([
+                    row["id"],
+                    row["timestamp"],
+                    row["source"],
+                    row["category"],
+                    row["level"] or "",
+                    row["event"] or "",
+                    row["fw"] or "",
+                    row["message"],
+                    row["details"] or "",
+                ])
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate()
+
+        filename = f"logs_{now_local().strftime('%Y%m%d_%H%M%S')}.csv"
+        return StreamingResponse(
+            csv_gen(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.post(
         "/api/esp/ota",

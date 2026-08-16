@@ -157,6 +157,52 @@ export async function deleteAuditLog({ startDate = null, endDate = null } = {}) 
   return res.json()
 }
 
+// ── Combined server + ESP log endpoint ────────────────────────────────
+// Each entry carries a ``source`` field ('server' | 'esp') so the UI can
+// badge or filter per origin.
+
+export async function fetchLogs({ source = 'all', filter = '', category = null, limit = 200, startDate = null, endDate = null } = {}) {
+  const { bayesianUrl } = getSettings()
+  const params = new URLSearchParams()
+  params.set('source', source)
+  if (filter) params.set('filter', filter)
+  if (category) params.set('category', category)
+  if (limit) params.set('limit', String(limit))
+  if (startDate) params.set('start_date', startDate)
+  if (endDate) params.set('end_date', endDate)
+  const qs = params.toString()
+  const url = `${bayesianUrl}/api/logs${qs ? '?' + qs : ''}`
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) throw new Error(`Logs fetch failed: ${res.status}`)
+  return res.json()
+}
+
+export async function deleteLogs({ source = 'all', startDate = null, endDate = null } = {}) {
+  const { bayesianUrl } = getSettings()
+  const params = new URLSearchParams()
+  params.set('source', source)
+  if (startDate) params.set('start_date', startDate)
+  if (endDate) params.set('end_date', endDate)
+  const qs = params.toString()
+  const url = `${bayesianUrl}/api/logs${qs ? '?' + qs : ''}`
+  const res = await fetchWithTimeout(url, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Logs delete failed: ${res.status}`)
+  return res.json()
+}
+
+export async function exportLogsCsv({ source = 'all', filter = '', category = null } = {}) {
+  const { bayesianUrl } = getSettings()
+  const params = new URLSearchParams()
+  params.set('source', source)
+  if (filter) params.set('filter', filter)
+  if (category) params.set('category', category)
+  const qs = params.toString()
+  const url = `${bayesianUrl}/api/logs/export${qs ? '?' + qs : ''}`
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) throw new Error(`Logs export failed: ${res.status}`)
+  return { blob: await res.blob(), contentDisposition: res.headers.get('content-disposition') || '' }
+}
+
 export async function exportAuditLogCsv({ filter = '', category = null, startDate = null, endDate = null } = {}) {
   const { bayesianUrl } = getSettings()
   const params = new URLSearchParams()

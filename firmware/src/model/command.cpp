@@ -24,6 +24,15 @@ Action Action::from_string(const char* str, bool& success) {
     return STOP;
 }
 
+const char* Action::to_string(Value value) {
+    switch (value) {
+        case STOP: return "STOP";
+        case START: return "START";
+        case DISPENSE_SPECIFIC_AMOUNT: return "DISPENSE_SPECIFIC_AMOUNT";
+    }
+    return "UNKNOWN";
+}
+
 Target Target::from_string(const char* str, bool& success) {
     if (strcmp(str, "NAGA_MORICH") == 0) {
         success = true;
@@ -44,6 +53,16 @@ Target Target::from_string(const char* str, bool& success) {
 
     success = false;
     return NAGA_MORICH;
+}
+
+const char* Target::to_string(Value value) {
+    switch (value) {
+        case NAGA_MORICH: return "NAGA_MORICH";
+        case ROSMARINO: return "ROSMARINO";
+        case HABANERO: return "HABANERO";
+        case CAROLINA_REAPER: return "CAROLINA_REAPER";
+    }
+    return "UNKNOWN";
 }
 
 std::shared_ptr<ICanBeDeserialized> Command::from_json(const char *json_str, DeserializationError& error, String &error_msg) {

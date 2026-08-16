@@ -9,6 +9,7 @@
 #include <esp_task_wdt.h>
 
 #include "MongooseCore.h"
+#include "esp32/log.h"
 #include "model/command.h"
 
 void CommandManager::init() {
@@ -91,6 +92,7 @@ static void ota_write_error(MongooseHttpServerRequest *req) {
     resp->printf("Firmware update failed: %d", Update.getError());
     req->send(resp);
     Update.printError(Serial);
+    log_event("ota", "error", "ota_failed", String("OTA update failed: " + String(Update.getError())).c_str());
 }
 
 void CommandManager::setup_ota() {
@@ -105,6 +107,7 @@ void CommandManager::setup_ota() {
                       uint64_t index, uint8_t *data, size_t len) {
             if (ev == MG_EV_HTTP_PART_BEGIN) {
                 Serial.printf("OTA start: %s\n", filename.c_str());
+                log_event("ota", "info", "ota_started", ("OTA update started: " + String(filename.c_str())).c_str());
                 if (!Update.begin()) {
                     ota_write_error(req);
                 }
@@ -122,10 +125,12 @@ void CommandManager::setup_ota() {
                 Serial.printf("OTA data finished (%u B)\n", ota_received_bytes);
                 if (Update.end(true)) {
                     Serial.printf("OTA success: %u B\n", ota_received_bytes);
+                    log_event("ota", "info", "ota_success", ("OTA update completed (" + String(ota_received_bytes) + " B)").c_str());
                     req->send(200, "text/plain", "OK");
                     ota_completed = true;
                 } else {
                     ota_write_error(req);
+                    log_event("ota", "error", "ota_failed", String("OTA update failed: " + String(Update.getError())).c_str());
                 }
             }
 

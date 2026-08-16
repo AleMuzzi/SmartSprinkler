@@ -1,12 +1,24 @@
 import React, { useEffect, useState } from 'react'
-import { fetchAuditLog, exportAuditLogCsv, deleteAuditLog } from '../services/api.js'
+import { fetchLogs, exportLogsCsv, deleteLogs } from '../services/api.js'
 
 const CATEGORY_COLORS = {
   inference: 'bg-blue-100 text-blue-700',
   command: 'bg-green-100 text-green-700',
+  watering: 'bg-teal-100 text-teal-700',
   alert: 'bg-red-100 text-red-700',
+  water_low: 'bg-orange-100 text-orange-700',
   error: 'bg-red-200 text-red-900',
   config: 'bg-purple-100 text-purple-700',
+  system: 'bg-gray-200 text-gray-700',
+  network: 'bg-indigo-100 text-indigo-700',
+  calibration: 'bg-yellow-100 text-yellow-700',
+  sensor: 'bg-cyan-100 text-cyan-700',
+  ota: 'bg-pink-100 text-pink-700',
+}
+
+const SOURCE_COLORS = {
+  server: 'bg-gray-100 text-gray-500',
+  esp: 'bg-indigo-500 text-white',
 }
 
 function formatTimestamp(ts) {
@@ -22,6 +34,7 @@ export function AuditLog({ initialFilter = '' }) {
   const [entries, setEntries] = useState([])
   const [filter, setFilter] = useState(initialFilter)
   const [category, setCategory] = useState('')
+  const [source, setSource] = useState('all')
   const [date, setDate] = useState('')
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -34,7 +47,7 @@ export function AuditLog({ initialFilter = '' }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchAuditLog({ filter, category: category || null, limit: 200, startDate: date || null, endDate: date || null })
+      const res = await fetchLogs({ source, filter, category: category || null, limit: 200, startDate: date || null, endDate: date || null })
       setEntries(res.entries || [])
       setCount(res.count || 0)
     } catch (e) {
@@ -48,14 +61,13 @@ export function AuditLog({ initialFilter = '' }) {
     setExporting(true)
     setError(null)
     try {
-      const { blob, contentDisposition } = await exportAuditLogCsv({
+      const { blob, contentDisposition } = await exportLogsCsv({
+        source,
         filter,
         category: category || null,
-        startDate: date || null,
-        endDate: date || null,
       })
       // Try to honour server-suggested filename, fallback to timestamp.
-      let filename = `audit_log_${Date.now()}.csv`
+      let filename = `logs_${Date.now()}.csv`
       const m = contentDisposition.match(/filename="?([^";]+)"?/)
       if (m) filename = m[1]
       const url = URL.createObjectURL(blob)
@@ -77,12 +89,12 @@ export function AuditLog({ initialFilter = '' }) {
     const scope = date ? `del ${date}` : 'TUTTI'
     const message = date
       ? `Eliminare tutti i log del ${date}?\nQuesta azione è irreversibile.`
-      : 'Vuoi eliminare TUTTI i log audit?\nQuesta azione è irreversibile.'
+      : `Vuoi eliminare TUTTI i log ${source === 'all' ? '' : source + ' '}?\nQuesta azione è irreversibile.`
     if (!window.confirm(message)) return
     setDeleting(true)
     setError(null)
     try {
-      const res = await deleteAuditLog({ startDate: date || null, endDate: date || null })
+      const res = await deleteLogs({ source, startDate: date || null, endDate: date || null })
       setEntries([])
       setCount(0)
       await load()
@@ -98,7 +110,7 @@ export function AuditLog({ initialFilter = '' }) {
     load()
     const id = setInterval(load, 10000)
     return () => clearInterval(id)
-  }, [filter, category, date])
+  }, [filter, category, source, date])
 
   const errorCount = entries.filter((e) => e.category === 'error').length
   const recentErrors = entries.filter((e) => e.category === 'error').slice(0, 5)
@@ -136,6 +148,16 @@ export function AuditLog({ initialFilter = '' }) {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+          title="Origine dei log"
+        >
+          <option value="all">Tutti (Server + ESP)</option>
+          <option value="server">Solo Server</option>
+          <option value="esp">Solo ESP</option>
+        </select>
         <input
           type="text"
           value={filter}
@@ -149,12 +171,18 @@ export function AuditLog({ initialFilter = '' }) {
           className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
         >
           <option value="">All categories</option>
+          <option value="system">system</option>
+          <option value="network">network</option>
+          <option value="calibration">calibration</option>
+          <option value="sensor">sensor</option>
           <option value="inference">inference</option>
           <option value="command">command</option>
+          <option value="watering">watering</option>
+          <option value="water_low">water_low</option>
+          <option value="ota">ota</option>
           <option value="alert">alert</option>
           <option value="error">error</option>
           <option value="config">config</option>
-          <option value="ota">ota</option>
         </select>
         <div className="relative flex items-center">
           <input
@@ -166,8 +194,8 @@ export function AuditLog({ initialFilter = '' }) {
           />
         </div>
         <button
-          onClick={() => { setFilter(''); setCategory(''); setDate('') }}
-          disabled={!filter && !category && !date}
+          onClick={() => { setFilter(''); setCategory(''); setDate(''); setSource('all') }}
+          disabled={!filter && !category && !date && source === 'all'}
           className="text-xs px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-40 disabled:hover:bg-gray-100"
           title="Rimuovi tutti i filtri"
         >
@@ -213,6 +241,9 @@ export function AuditLog({ initialFilter = '' }) {
               <div className="flex items-center gap-2 mb-1">
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[entry.category] || 'bg-gray-100 text-gray-700'}`}>
                   {entry.category}
+                </span>
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase ${SOURCE_COLORS[entry.source] || 'bg-gray-100 text-gray-500'}`}>
+                  {entry.source || 'server'}
                 </span>
                 <span className="text-xs text-gray-400">{formatTimestamp(entry.timestamp)}</span>
               </div>

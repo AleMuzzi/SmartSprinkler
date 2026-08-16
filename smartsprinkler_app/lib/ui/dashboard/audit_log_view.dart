@@ -4,9 +4,16 @@ import 'package:smartsprinkler_app/data/audit_log_service.dart';
 const _categoryColors = {
   'inference': Color(0xFF1976D2),
   'command': Color(0xFF388E3C),
+  'watering': Color(0xFF00897B),
   'alert': Color(0xFFD32F2F),
+  'water_low': Color(0xFFF57C00),
   'error': Color(0xFFB71C1C),
   'config': Color(0xFF7B1FA2),
+  'system': Color(0xFF546E7A),
+  'network': Color(0xFF303F9F),
+  'calibration': Color(0xFFF9A825),
+  'sensor': Color(0xFF00838F),
+  'ota': Color(0xFFAD1457),
 };
 
 class AuditLogView extends StatefulWidget {
@@ -22,6 +29,7 @@ class _AuditLogViewState extends State<AuditLogView> {
 
   List<AuditLogEntry> _entries = [];
   String _category = '';
+  String _source = 'all';
   bool _loading = false;
   bool _downloading = false;
   bool _deleting = false;
@@ -49,6 +57,7 @@ class _AuditLogViewState extends State<AuditLogView> {
     try {
       final dateStr = _selectedDate != null ? _fmtDate(_selectedDate!) : null;
       final entries = await _service.fetchLogEntries(
+        source: _source,
         filter: _filterController.text,
         category: _category.isEmpty ? null : _category,
         startDate: dateStr,
@@ -81,6 +90,7 @@ class _AuditLogViewState extends State<AuditLogView> {
     });
     try {
       final result = await _service.downloadCsv(
+        source: _source,
         filter: _filterController.text,
         category: _category.isEmpty ? null : _category,
       );
@@ -125,12 +135,14 @@ class _AuditLogViewState extends State<AuditLogView> {
   bool get _hasActiveFilters =>
       _filterController.text.isNotEmpty ||
       _category.isNotEmpty ||
+      _source != 'all' ||
       _selectedDate != null;
 
   void _clearFilters() {
     _filterController.clear();
     setState(() {
       _category = '';
+      _source = 'all';
       _selectedDate = null;
     });
     _load();
@@ -138,14 +150,17 @@ class _AuditLogViewState extends State<AuditLogView> {
 
   Future<void> _confirmDelete() async {
     final dateStr = _selectedDate != null ? _fmtDate(_selectedDate!) : null;
+    final sourceLabel = _source == 'all'
+        ? 'tutti'
+        : (_source == 'esp' ? 'ESP' : 'Server');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminare i log?'),
         content: Text(
           dateStr != null
-              ? 'Eliminare tutti i log del $dateStr?\nQuesta azione è irreversibile.'
-              : 'Vuoi eliminare TUTTI i log audit?\nQuesta azione è irreversibile.',
+              ? 'Eliminare tutti i log ($sourceLabel) del $dateStr?\nQuesta azione è irreversibile.'
+              : 'Vuoi eliminare TUTTI i log $sourceLabel?\nQuesta azione è irreversibile.',
         ),
         actions: [
           TextButton(
@@ -170,6 +185,7 @@ class _AuditLogViewState extends State<AuditLogView> {
     });
     try {
       final deleted = await _service.deleteLogEntries(
+        source: _source,
         startDate: dateStr,
         endDate: dateStr,
       );
@@ -215,11 +231,13 @@ class _AuditLogViewState extends State<AuditLogView> {
                 style: TextStyle(fontSize: 22),
               ),
               const SizedBox(width: 8),
-              Text(
-                '(${_entries.length} entries)',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              Expanded(
+                child: Text(
+                  '(${_entries.length} entries)',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
               ),
-              const Spacer(),
               IconButton(
                 onPressed: _downloading ? null : _downloadCsv,
                 icon: _downloading
@@ -248,31 +266,36 @@ class _AuditLogViewState extends State<AuditLogView> {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _filterController,
-                  decoration: InputDecoration(
-                    hintText: 'Filter by text…',
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.search),
-                      onPressed: _load,
-                    ),
-                  ),
-                  onSubmitted: (_) => _load(),
-                ),
+              DropdownButton<String>(
+                value: _source,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('Tutti')),
+                  DropdownMenuItem(value: 'server', child: Text('Server')),
+                  DropdownMenuItem(value: 'esp', child: Text('ESP')),
+                ],
+                onChanged: (v) {
+                  setState(() => _source = v ?? 'all');
+                  _load();
+                },
               ),
-              const SizedBox(width: 8),
               DropdownButton<String>(
                 value: _category,
                 items: const [
-                  DropdownMenuItem(value: '', child: Text('All')),
+                  DropdownMenuItem(value: '', child: Text('Categoria')),
+                  DropdownMenuItem(value: 'system', child: Text('System')),
+                  DropdownMenuItem(value: 'network', child: Text('Network')),
+                  DropdownMenuItem(value: 'calibration', child: Text('Calibration')),
+                  DropdownMenuItem(value: 'sensor', child: Text('Sensor')),
                   DropdownMenuItem(value: 'inference', child: Text('Inference')),
                   DropdownMenuItem(value: 'command', child: Text('Command')),
+                  DropdownMenuItem(value: 'watering', child: Text('Watering')),
+                  DropdownMenuItem(value: 'water_low', child: Text('Water low')),
+                  DropdownMenuItem(value: 'ota', child: Text('OTA')),
                   DropdownMenuItem(value: 'alert', child: Text('Alert')),
                   DropdownMenuItem(value: 'error', child: Text('Error')),
                   DropdownMenuItem(value: 'config', child: Text('Config')),
@@ -282,13 +305,11 @@ class _AuditLogViewState extends State<AuditLogView> {
                   _load();
                 },
               ),
-              const SizedBox(width: 4),
               IconButton(
                 onPressed: _pickDate,
                 icon: const Icon(Icons.calendar_month, color: Color(0xFF1976D2)),
                 tooltip: 'Filtra per data',
               ),
-              const SizedBox(width: 4),
               IconButton(
                 onPressed: _clearFilters,
                 icon: Icon(
@@ -298,6 +319,21 @@ class _AuditLogViewState extends State<AuditLogView> {
                 tooltip: 'Rimuovi tutti i filtri',
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _filterController,
+            decoration: InputDecoration(
+              hintText: 'Filter by text…',
+              isDense: true,
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: _load,
+              ),
+            ),
+            onSubmitted: (_) => _load(),
           ),
           if (_selectedDate != null)
             Padding(
@@ -416,6 +452,24 @@ class _AuditLogViewState extends State<AuditLogView> {
                                       child: Text(
                                         e.category,
                                         style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: e.source == 'esp'
+                                            ? const Color(0xFF3F51B5)
+                                            : Colors.grey.shade300,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        e.source == 'esp' ? 'ESP' : 'Server',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: e.source == 'esp' ? Colors.white : Colors.grey.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 8),

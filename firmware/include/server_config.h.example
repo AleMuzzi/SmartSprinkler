@@ -1,0 +1,7 @@
+#pragma once
+
+// Copia questo file in ``server_config.h`` e imposta l'URL del server.
+// L'URL è sovrascrivibile anche a runtime via seriale: ``SERVER <url>``.
+#ifndef SMARTSPRINKLER_SERVER_URL
+#define SMARTSPRINKLER_SERVER_URL "http://192.168.1.100:8080"
+#endif

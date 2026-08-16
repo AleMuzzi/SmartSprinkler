@@ -81,6 +81,9 @@ BayesianSprinkler/tests/simulations/**/run_*/
 # Local WiFi credentials (never commit secrets)
 firmware/include/wifi_secrets.h
 
+# Local server URL for ESP event-log upload (never commit machine-specific URLs)
+firmware/include/server_config.h
+
 # Auto-generated firmware version counter and header (managed by extra_script.py)
 firmware/.build_count
 firmware/src/esp32/fw_version.h

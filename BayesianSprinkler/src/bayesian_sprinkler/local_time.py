@@ -22,3 +22,12 @@ def configure(timezone: str) -> None:
 def now() -> datetime:
     """Current local datetime, timezone-aware and auto-adjusting for DST."""
     return datetime.now(_ZONE)
+
+
+def from_epoch(epoch_sec: float) -> datetime:
+    """Local datetime (timezone-aware) for the given UTC epoch seconds.
+
+    Used to store ESP-report event timestamps in the same local convention
+    as everything else in the audit database.
+    """
+    return datetime.fromtimestamp(epoch_sec, tz=_ZONE)

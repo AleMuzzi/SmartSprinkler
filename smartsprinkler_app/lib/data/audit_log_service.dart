@@ -9,6 +9,10 @@ class AuditLogEntry {
   final String category;
   final String message;
   final String? details;
+  final String source;
+  final String? level;
+  final String? event;
+  final String? fw;
 
   AuditLogEntry({
     required this.id,
@@ -16,6 +20,10 @@ class AuditLogEntry {
     required this.category,
     required this.message,
     this.details,
+    this.source = 'server',
+    this.level,
+    this.event,
+    this.fw,
   });
 
   factory AuditLogEntry.fromJson(Map<String, dynamic> json) {
@@ -25,6 +33,10 @@ class AuditLogEntry {
       category: json['category'] as String,
       message: json['message'] as String,
       details: json['details'] as String?,
+      source: json['source'] as String? ?? 'server',
+      level: json['level'] as String?,
+      event: json['event'] as String?,
+      fw: json['fw'] as String?,
     );
   }
 }
@@ -32,27 +44,30 @@ class AuditLogEntry {
 class AuditLogService {
   final Settings settings = Settings();
 
+  /// Fetch log entries from the combined server + ESP endpoint. ``source``
+  /// is one of ``all`` / ``server`` / ``esp``.
   Future<List<AuditLogEntry>> fetchLogEntries({
+    String source = 'all',
     String filter = '',
     String? category,
     int limit = 200,
     String? startDate,
     String? endDate,
   }) async {
-    final query = <String, String>{};
+    final query = <String, String>{'source': source};
     if (filter.isNotEmpty) query['filter'] = filter;
     if (category != null && category.isNotEmpty) query['category'] = category;
     if (limit != 200) query['limit'] = limit.toString();
     if (startDate != null) query['start_date'] = startDate;
     if (endDate != null) query['end_date'] = endDate;
 
-    final uri = Uri.parse('${settings.bayesianUrl}/api/audit-log').replace(
+    final uri = Uri.parse('${settings.bayesianUrl}/api/logs').replace(
       queryParameters: query.isEmpty ? null : query,
     );
 
     final response = await http.get(uri).timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) {
-      throw Exception('Audit log fetch failed: ${response.statusCode}');
+      throw Exception('Log fetch failed: ${response.statusCode}');
     }
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     final entries = (json['entries'] as List<dynamic>)
@@ -61,43 +76,49 @@ class AuditLogService {
     return entries;
   }
 
-  /// Deletes audit log entries. When a date range is supplied only the
-  /// entries within it (inclusive) are removed, otherwise everything.
-  Future<int> deleteLogEntries({String? startDate, String? endDate}) async {
-    final query = <String, String>{};
+  /// Deletes log entries (server, ESP, or both via ``source``). When a date
+  /// range is supplied only the entries within it (inclusive) are removed,
+  /// otherwise everything.
+  Future<int> deleteLogEntries({
+    String source = 'all',
+    String? startDate,
+    String? endDate,
+  }) async {
+    final query = <String, String>{'source': source};
     if (startDate != null) query['start_date'] = startDate;
     if (endDate != null) query['end_date'] = endDate;
 
-    final uri = Uri.parse('${settings.bayesianUrl}/api/audit-log').replace(
+    final uri = Uri.parse('${settings.bayesianUrl}/api/logs').replace(
       queryParameters: query.isEmpty ? null : query,
     );
 
     final response = await http.delete(uri).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
-      throw Exception('Audit log delete failed: ${response.statusCode}');
+      throw Exception('Log delete failed: ${response.statusCode}');
     }
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     return json['deleted'] as int? ?? 0;
   }
 
-  /// Downloads the audit log as a CSV file. Returns the file path where
+  /// Downloads the combined log as a CSV file. Returns the file path where
   /// it was saved and the suggested filename (or null if the server
   /// didn't provide one).
   Future<({String path, String? suggestedName})> downloadCsv({
+    String source = 'all',
     String filter = '',
     String? category,
   }) async {
-    final query = <String, String>{};
+    final query = <String, String>{'source': source};
     if (filter.isNotEmpty) query['filter'] = filter;
     if (category != null && category.isNotEmpty) query['category'] = category;
 
-    final uri = Uri.parse('${settings.bayesianUrl}/api/audit-log/export').replace(
+    final uri = Uri.parse('${settings.bayesianUrl}/api/logs/export').replace(
       queryParameters: query.isEmpty ? null : query,
     );
 
     final response = await http.get(uri).timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
-      throw Exception('Audit log export failed: ${response.statusCode}');
+      throw Exception('Log export failed: ${response.statusCode}');
     }
 
     // Parse Content-Disposition for the suggested filename.
@@ -107,7 +128,7 @@ class AuditLogService {
       final m = RegExp(r'filename="?([^";]+)"?').firstMatch(cd);
       if (m != null) suggested = m.group(1);
     }
-    suggested ??= 'audit_log_${DateTime.now().millisecondsSinceEpoch}.csv';
+    suggested ??= 'logs_${DateTime.now().millisecondsSinceEpoch}.csv';
 
     // Pick a sensible Downloads directory on each platform.
     final dir = await _downloadsDir();
