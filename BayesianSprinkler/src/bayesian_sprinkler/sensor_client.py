@@ -23,10 +23,17 @@ class ESP32Client:
             raise
         return resp_json
 
-    def discretize_soil_moisture(self, value: float) -> str:
-        if value <= self.thresholds["soil_moisture"]["dry"]:
+    def discretize_soil_moisture(self, value: float,
+                                 thresholds: dict | None = None) -> str:
+        """Map a raw soil-moisture % to its discrete state.
+
+        ``thresholds`` may override the global ``{"dry": .., "moist": ..}``
+        bounds for an individual plant (default = global config).
+        """
+        th = thresholds if thresholds is not None else self.thresholds["soil_moisture"]
+        if value <= th.get("dry", 35):
             return "dry"
-        if value <= self.thresholds["soil_moisture"]["moist"]:
+        if value <= th.get("moist", 60):
             return "moist"
         return "wet"
 

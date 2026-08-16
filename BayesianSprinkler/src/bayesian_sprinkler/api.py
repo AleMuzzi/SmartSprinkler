@@ -53,6 +53,23 @@ state = AppState()
 OTA_MAX_BYTES = 1_800_000
 
 
+def _plant_soil_thresholds(plant_cfg: dict) -> dict:
+    """Per-plant soil-moisture discretisation bounds.
+
+    Each plant may set ``soil_moisture_thresholds: {dry: .., moist: ..}`` so
+    the raw sensor % maps to the BN states ``dry`` / ``moist`` / ``wet``
+    differently per plant (e.g. drought-tolerant rosemary only counts as
+    "dry" below 10 %). Unset keys fall back to the global
+    ``thresholds.soil_moisture`` values.
+    """
+    plant = plant_cfg.get("soil_moisture_thresholds") or {}
+    global_sm = state.config.get("thresholds", {}).get("soil_moisture", {})
+    return {
+        "dry": plant.get("dry", global_sm.get("dry", 35)),
+        "moist": plant.get("moist", global_sm.get("moist", 60)),
+    }
+
+
 # ── Request / Response models ────────────────────────────────────────
 
 class ManualWaterRequest(BaseModel):
@@ -531,7 +548,9 @@ def _register_routes(app: FastAPI):
             plant_sm = _to_float(raw_sm)
             if plant_sm is None:
                 plant_sm = raw_soil
-            plant_soil = state.esp.discretize_soil_moisture(plant_sm)
+            plant_soil = state.esp.discretize_soil_moisture(
+                plant_sm, _plant_soil_thresholds(
+                    state.config["plants"][plant_name]))
 
             with state.lock:
                 prob = state.bn.query(
@@ -635,7 +654,9 @@ def _register_routes(app: FastAPI):
             plant_sm = _to_float(raw_sm)
             if plant_sm is None:
                 plant_sm = raw_soil_avg
-            plant_soil = state.esp.discretize_soil_moisture(plant_sm)
+            plant_soil = state.esp.discretize_soil_moisture(
+                plant_sm, _plant_soil_thresholds(
+                    state.config["plants"][plant_name]))
 
             with state.lock:
                 prob = state.bn.query(
@@ -846,7 +867,8 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                 plant_sm = _to_float(status.get("soil_moisture"))
             if plant_sm is None:
                 plant_sm = 0.0
-            soil = st.esp.discretize_soil_moisture(plant_sm)
+            soil = st.esp.discretize_soil_moisture(
+                plant_sm, _plant_soil_thresholds(cfg))
 
             logger.info(
                 "Inference cycle — %s: soil=%s (raw=%s), temp: %s°C, humidity: %s%%  |  "

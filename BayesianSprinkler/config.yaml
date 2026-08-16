@@ -80,8 +80,15 @@ plants:
     esp_target: ROSMARINO
     sensor_index: 0
     base_need: 0.2
-    threshold: 0.8
-    target_soil_moisture: 55.0
+    # P(dry) at <10% soil is 0.48–0.82, P(moist) ≤ 0.47, so 0.5 makes the
+    # plant water whenever it enters the "dry" state and never while moist.
+    threshold: 0.6
+    target_soil_moisture: 18.0
+    # Drought-tolerant: the soil only maps to the BN "dry" state below 10%
+    # moisture, so the network stops flagging it for water while wetter.
+    soil_moisture_thresholds:
+      dry: 10
+      moist: 20
     # Round pot Ø18.5 cm × h11 cm → r=9.25 cm → π·r²·h ≈ 2 959 cm³ of soil.
     # Available water ≈ 15 % → pot_capacity_ml = 440.
     # Rosmarino is drought-tolerant; cap low so we never flood it.

@@ -107,6 +107,16 @@ plants:
     base_need: 0.2
     threshold: 0.8
     target_soil_moisture: 55.0
+    # Optional per-plant soil-moisture discretisation bounds: they map the
+    # raw sensor % to the BN states dry / moist / wet for THIS plant only
+    # (elsewhere the global thresholds.* apply). value ≤ dry → dry,
+    # dry < value ≤ moist → moist, value > moist → wet. Rosmarino is
+    # drought-tolerant, so it only turns "dry" (BN NeedWater=yes driver)
+    # below 10% moisture.
+    # Defaults are dry: 35; moist: 60
+    soil_moisture_thresholds:
+      dry: 10
+      moist: 20
     # Round pot Ø18.5 cm × h11 cm → r=9.25 cm → π·r²·h ≈ 2 959 cm³ of soil.
     # Available water ≈ 15 % → pot_capacity_ml = 440.
     # Rosmarino is drought-tolerant; cap low so we never flood it.

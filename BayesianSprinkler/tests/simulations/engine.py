@@ -539,7 +539,7 @@ class SimulationEngine:
 
         # 5. Build mock status and call the same inference function the api uses
         avg_soil = sum(self.state.soil_moisture_by_plant.values()) / max(1, len(self.plant_ids))
-        status = _status_payload_for(self.state, self.plant_ids)
+        status = _status_payload_for(self.state, self.plant_ids, self.cfg["plants_cfg"])
         status["_sim_hour"] = h
         status["_blocked_by_hour"] = []
 
@@ -554,7 +554,7 @@ class SimulationEngine:
             )
             api_state_module.config = _bayerian_full_config(cfg)
             api_state_module.bn = SmartSprinklerBN(cfg["plants_cfg"])
-            api_state_module.esp = SimESPClient(self.state, self.plant_ids)
+            api_state_module.esp = SimESPClient(self.state, self.plant_ids, cfg["plants_cfg"])
             # Reset the dosing tracker
             if hasattr(api_state_module, "_last_watered_doses"):
                 api_state_module._last_watered_doses = {}
@@ -660,8 +660,19 @@ class SimulationEngine:
 # ── Helpers shared by both step paths ────────────────────────────────────
 
 
-def _status_payload_for(state: MockESPState, plant_ids: list[str]) -> dict[str, Any]:
-    """Build the ``status`` payload the api layer expects."""
+def _status_payload_for(
+    state: MockESPState,
+    plant_ids: list[str],
+    plants_cfg: dict | None = None,
+) -> dict[str, Any]:
+    """Build the ``status`` payload the api layer expects.
+
+    Each plant's soil reading is exposed on ``soil_moisture_{sensor_index}``
+    using the *configured* ``sensor_index`` (matching the physical ESP wiring
+    in ``config.yaml``), NOT the positional order of ``plant_ids``. Without
+    this the api decides on the wrong plant's soil whenever the config order
+    differs from the sensor ordering (e.g. rosmarino on sensor 0).
+    """
     avg = sum(state.soil_moisture_by_plant.values()) / max(1, len(plant_ids))
     payload: dict[str, Any] = {
         "air_temperature": f"{state.air_temperature:.2f}",
@@ -675,7 +686,10 @@ def _status_payload_for(state: MockESPState, plant_ids: list[str]) -> dict[str, 
         "status": "ok",
     }
     for i, p in enumerate(plant_ids):
-        payload[f"soil_moisture_{i}"] = f"{state.soil_moisture_by_plant[p]:.2f}"
+        sensor_index = i
+        if plants_cfg is not None:
+            sensor_index = int(plants_cfg.get(p, {}).get("sensor_index", i))
+        payload[f"soil_moisture_{sensor_index}"] = f"{state.soil_moisture_by_plant[p]:.2f}"
     return payload
 
 
@@ -691,17 +705,19 @@ class SimESPClient:
     side-effects we want to record (soil moisture boost, watering_count).
     """
 
-    def __init__(self, state: MockESPState, plant_ids: list[str]) -> None:
+    def __init__(self, state: MockESPState, plant_ids: list[str],
+                 plants_cfg: dict | None = None) -> None:
         self.state = state
         self.plant_ids = plant_ids
+        self.plants_cfg = plants_cfg
 
     # ── discretisation (delegated to the real implementation) ─────────
-    def discretize_soil_moisture(self, value: float) -> str:
-        from bayesian_sprinkler.sensor_client import ESP32Client
-        thresholds = {"dry": 35, "moist": 65}
-        if value <= thresholds["dry"]:
+    def discretize_soil_moisture(self, value: float,
+                                 thresholds: dict | None = None) -> str:
+        bounds = thresholds if thresholds is not None else {"dry": 35, "moist": 60}
+        if value <= bounds.get("dry", 35):
             return "dry"
-        if value <= thresholds["moist"]:
+        if value <= bounds.get("moist", 60):
             return "moist"
         return "wet"
 
@@ -724,7 +740,7 @@ class SimESPClient:
         return "high"
 
     def get_status(self) -> dict:
-        return _status_payload_for(self.state, self.plant_ids)
+        return _status_payload_for(self.state, self.plant_ids, self.plants_cfg)
 
     # ── commands → mutate the mock state ────────────────────────────
     def start_watering(self, target: str) -> dict:
