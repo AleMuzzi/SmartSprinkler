@@ -20,6 +20,7 @@ class DashboardViewModel extends ChangeNotifier {
   Timer? _healthTimer;
   Timer? _bayesianTimer;
   Timer? _cisternTimer;
+  Timer? _serviceTimer;
   bool _disposed = false;
   List<PlantData> _plants = [];
   List<BayesianPlantStatus> _plantStatuses = [];
@@ -36,6 +37,8 @@ class DashboardViewModel extends ChangeNotifier {
   ConnectivityStatus get espStatus => _espStatus;
   ConnectivityStatus get bayesianStatus => _bayesianStatus;
   String? get espFirmwareVersion => _espFirmwareVersion;
+  bool _servicePaused = false;
+  bool get servicePaused => _servicePaused;
 
   DashboardViewModel() {
     _initDefaultPlants();
@@ -77,12 +80,14 @@ class DashboardViewModel extends ChangeNotifier {
     _fetchBayesianStatus();
     _fetchWeatherStatus();
     _fetchCisternStatus();
+    _fetchServiceConfig();
 
     _healthTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspHealth());
     _espTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspStatus());
     _bayesianTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchBayesianStatus());
     Timer.periodic(const Duration(minutes: 2), (_) => _fetchWeatherStatus());
     _cisternTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchCisternStatus());
+    _serviceTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchServiceConfig());
   }
 
   @override
@@ -92,6 +97,7 @@ class DashboardViewModel extends ChangeNotifier {
     _healthTimer?.cancel();
     _bayesianTimer?.cancel();
     _cisternTimer?.cancel();
+    _serviceTimer?.cancel();
     super.dispose();
   }
 
@@ -104,6 +110,7 @@ class DashboardViewModel extends ChangeNotifier {
   Future<void> fetchBayesianStatus() => _fetchBayesianStatus();
   Future<void> fetchWeatherStatus() => _fetchWeatherStatus();
   Future<void> fetchCisternStatus() => _fetchCisternStatus();
+  Future<void> fetchServiceConfig() => _fetchServiceConfig();
 
   /// Pings the ESP directly on /health every few seconds to keep the
   /// online indicator honest, regardless of what the Bayesian server
@@ -247,6 +254,49 @@ class DashboardViewModel extends ChangeNotifier {
       _bayesianStatus = ConnectivityStatus.disconnected;
     }
     _notify();
+  }
+
+  Future<void> _fetchServiceConfig() async {
+    debugPrint('[_fetchServiceConfig] URL: ${settings.bayesianUrl}/api/service/config');
+    try {
+      final response = await http.get(
+        Uri.parse('${settings.bayesianUrl}/api/service/config'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final config = json['config'] as Map<String, dynamic>? ?? {};
+        _servicePaused = config['paused'] == '1';
+        debugPrint('[_fetchServiceConfig] paused: $_servicePaused');
+      }
+    } catch (e) {
+      log('Service config fetch error: $e');
+    }
+    _notify();
+  }
+
+  Future<void> setServicePaused(bool paused) async {
+    try {
+      final response = await http
+          .post(Uri.parse('${settings.bayesianUrl}/api/service/${paused ? 'pause' : 'resume'}'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        _servicePaused = paused;
+        _notify();
+        await Fluttertoast.showToast(
+          msg: paused ? 'Servizio in pausa' : 'Servizio riattivato',
+          fontSize: 14,
+        );
+      } else {
+        await Fluttertoast.showToast(
+          msg: 'Errore ${response.statusCode} su ${paused ? 'pause' : 'resume'}',
+          fontSize: 14,
+        );
+      }
+    } catch (e) {
+      log('Service ${paused ? 'pause' : 'resume'} error: $e');
+      await Fluttertoast.showToast(msg: 'Bayesian unreachable', fontSize: 14);
+    }
   }
 
   Future<void> _fetchCisternStatus() async {

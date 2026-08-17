@@ -24,7 +24,13 @@ from bayesian_sprinkler.audit_log import (
     delete_esp_events_older_than,
 )
 from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
-from bayesian_sprinkler.database import init_db, insert_record
+from bayesian_sprinkler.database import (
+    init_db,
+    insert_record,
+    get_service_config,
+    set_service_config,
+    get_all_service_config,
+)
 from bayesian_sprinkler.local_time import configure as configure_timezone
 from bayesian_sprinkler.local_time import now as now_local
 from bayesian_sprinkler.notifier import send_email_alert
@@ -54,6 +60,7 @@ class AppState:
         self._water_low_alert: bool = False
         self._cistern_level_ml: float = 30000.0  # default; reset by create_app from config
         self._last_watered_doses: dict[str, float] = {}
+        self._service_paused: bool = False
 
 
 state = AppState()
@@ -146,6 +153,41 @@ class EspEventsBatch(BaseModel):
 
 # ── Lifespan ────────────────────────────────────────────────────────
 
+# The hourly inference job id, reused by the schedule/unschedule helpers so
+# the pause/resume endpoints and the lifespan create/remove the exact same job.
+INFERENCE_JOB_ID = "inference_cycle"
+
+
+def _schedule_inference(st: AppState) -> None:
+    """(Re)create the hourly inference job.
+
+    Used at startup when the service is not paused and by
+    ``POST /api/service/resume``. ``replace_existing`` guarantees a stray
+    job is never duplicated.
+    """
+    assert st.scheduler is not None
+    st.scheduler.add_job(
+        func=lambda: _inference_cycle(st),
+        trigger=CronTrigger(minute=4),
+        id=INFERENCE_JOB_ID,
+        replace_existing=True,
+    )
+
+
+def _unschedule_inference(st: AppState) -> None:
+    """Remove the hourly inference job.
+
+    Tolerates a job that is already gone (pause called twice, or the service
+    started already paused).
+    """
+    if st.scheduler is None:
+        return
+    try:
+        st.scheduler.remove_job(INFERENCE_JOB_ID)
+    except Exception:
+        pass  # APScheduler raises JobLookupError when the job is absent
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -156,6 +198,7 @@ async def lifespan(app: FastAPI):
     deleted = delete_esp_events_older_than(15)
     if deleted:
         logger.info("Pruned %d stale ESP events (retention 15 days)", deleted)
+    state._service_paused = get_service_config("paused", "0") == "1"
     state.scheduler = BackgroundScheduler()
     state.scheduler.add_job(
         func=lambda: _poll_weather(state),
@@ -163,15 +206,15 @@ async def lifespan(app: FastAPI):
         id="weather_poll",
         replace_existing=True,
     )
-    state.scheduler.add_job(
-        func=lambda: _inference_cycle(state),
-        trigger=CronTrigger(minute=4),
-        id="inference_cycle",
-        replace_existing=True,
-    )
+    # The inference job is only scheduled when the service is active. When it
+    # is paused (persisted across restarts), the job does not exist at all —
+    # resume recreates it on demand.
+    if not state._service_paused:
+        _schedule_inference(state)
     state.scheduler.start()
     _poll_weather(state)
-    _inference_cycle(state)
+    if not state._service_paused:
+        _inference_cycle(state)
     logger.info("API server started — scheduler running")
     yield
     if state.scheduler:
@@ -589,8 +632,20 @@ def _register_routes(app: FastAPI):
         state.esp.start_watering(cfg["esp_target"])
         time.sleep(cfg["watering_duration"])
         state.esp.stop_watering(cfg["esp_target"])
+        # Track cistern water usage exactly like the inference path does.
+        # Without this a manual watering would consume water (and possibly
+        # empty the tank) while the estimate stayed untouched at full.
+        flow_rate = float(state.config.get("flow_rate_ml_per_min", 1380.0))
+        used_ml = cfg["watering_duration"] * flow_rate / 60.0
+        cistern_capacity = float(state.config.get("cistern_capacity_ml", 30000))
+        previous_level = float(state._cistern_level_ml)
+        state._cistern_level_ml = max(0.0, previous_level - used_ml)
         log_event("command", f"Manual watering: {cfg['display_name']}",
-                  details=f"target={cfg['esp_target']} duration={cfg['watering_duration']}s")
+                  details=(
+                      f"target={cfg['esp_target']} duration={cfg['watering_duration']}s "
+                      f"used={used_ml:.0f}mL "
+                      f"cistern={state._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
+                  ))
 
         return {"status": "ok", "plant": req.plant_type}
 
@@ -618,6 +673,53 @@ def _register_routes(app: FastAPI):
             details=f"watered={list(watered.keys())}",
         )
         return {"status": "ok", "watered": watered}
+
+    @app.get(
+        "/api/service/config",
+        tags=["Service"],
+        summary="Full service configuration (paused flag and future keys)",
+        responses={200: {"description": "All persisted service_config key/value pairs"}},
+    )
+    def service_config():
+        return {"config": get_all_service_config()}
+
+    def _set_service_paused(paused: bool) -> dict:
+        previous = state._service_paused
+        state._service_paused = paused
+        set_service_config("paused", "1" if paused else "0")
+        if paused:
+            _unschedule_inference(state)
+            logger.info("Service paused — hourly inference stopped")
+            log_event("inference", "Service paused",
+                      details="manual action via API; hourly inference stopped")
+        else:
+            _schedule_inference(state)
+            logger.info("Service resumed — hourly inference rescheduled")
+            log_event("inference", "Service resumed",
+                      details="manual action via API; hourly inference rescheduled")
+        return {"status": "ok", "paused": paused, "previous": previous}
+
+    @app.post(
+        "/api/service/pause",
+        tags=["Service"],
+        summary="Pause the service: remove the hourly inference job",
+        responses={
+            200: {"description": "Service paused (idempotent)"},
+        },
+    )
+    def service_pause():
+        return _set_service_paused(True)
+
+    @app.post(
+        "/api/service/resume",
+        tags=["Service"],
+        summary="Resume the service: recreate the hourly inference job",
+        responses={
+            200: {"description": "Service resumed (idempotent)"},
+        },
+    )
+    def service_resume():
+        return _set_service_paused(False)
 
     @app.get(
         "/api/health",

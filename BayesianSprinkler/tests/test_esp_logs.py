@@ -3,6 +3,7 @@ queries, cleanup and retention."""
 
 import pytest
 from unittest.mock import patch
+from datetime import datetime
 
 from fastapi.testclient import TestClient
 
@@ -100,6 +101,10 @@ class TestCombinedLogs:
         assert entry["fw"] == "1.0.0.20"
         assert entry["level"] == "info"
         assert entry["category"] == "command"
+        # The datetime shown by web/app for ESP rows must be present and
+        # parseable, exactly like server rows.
+        assert entry["timestamp"]
+        datetime.fromisoformat(entry["timestamp"])
 
     def test_get_logs_all_combines_server_and_esp(self, db, client):
         api.log_event("inference", "Inference cycle completed", details="x=1")

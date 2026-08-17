@@ -65,6 +65,24 @@ String EventLog::localDateStr() const {
     return String(buf);
 }
 
+// Local wall-clock string "YYYY-MM-DD HH:MM:SS" for the current epoch. Empty
+// when no clock is available at all (no NTP, no server fallback).
+String EventLog::localDateTimeStr() const {
+    if (!timeSynced() && _epoch_base == 0) {
+        return "";
+    }
+    time_t now = static_cast<time_t>(epochSec());
+    struct tm tmv;
+    if (!localtime_r(&now, &tmv)) {
+        return "";
+    }
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
+             tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday,
+             tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+    return String(buf);
+}
+
 bool EventLog::rotateToToday() {
     String today = localDateStr();
     if (today.length() == 0) {
@@ -129,6 +147,7 @@ void EventLog::appendDetails(const char* category, const char* level, const char
                              const char* message, const char* details_json) {
     JsonDocument doc;
     doc["ts"] = epochSec();
+    doc["time"] = localDateTimeStr();
     doc["fw"] = FW_VERSION;
     doc["level"] = level;
     doc["category"] = category;

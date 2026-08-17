@@ -237,6 +237,23 @@ export async function runInference() {
   return res.json()
 }
 
+export async function fetchServiceConfig() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/service/config`)
+  if (!res.ok) throw new Error(`Service config fetch failed: ${res.status}`)
+  return res.json()
+}
+
+export async function setServicePaused(paused) {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(
+    `${bayesianUrl}/api/service/${paused ? 'pause' : 'resume'}`,
+    { method: 'POST' },
+  )
+  if (!res.ok) throw new Error(`Service ${paused ? 'pause' : 'resume'} failed: ${res.status}`)
+  return res.json()
+}
+
 export const PLANTS = [
   { id: 'habanero', label: 'Habanero' },
   { id: 'naga_morich', label: 'Naga Morich' },

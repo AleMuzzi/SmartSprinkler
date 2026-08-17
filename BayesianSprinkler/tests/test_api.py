@@ -143,6 +143,31 @@ class TestAPI:
                         assert response.status_code == 200
                         mock_start.assert_called_once_with("NAGA_MORICH")
 
+    def test_manual_water_decrements_cistern(self, client):
+        api.state._cistern_level_ml = 30000.0
+        with patch.object(api.state.esp, "get_status") as mock_status:
+            mock_status.return_value = {
+                "air_temperature": "20.0",
+                "air_humidity": "50.0",
+                "soil_moisture": "40.0",
+                "water_pump": "off",
+                "water_low_alert": "off",
+            }
+            with patch.object(api.state.weather, "fetch") as mock_wx:
+                mock_wx.return_value = {
+                    "cloud_cover": "clear",
+                    "rain_forecast": "no",
+                }
+                with patch.object(api.state.esp, "start_watering") as mock_start:
+                    with patch.object(api.state.esp, "stop_watering"):
+                        response = client.post(
+                            "/api/plants/manual-water",
+                            json={"plant_type": "habanero"},
+                        )
+        assert response.status_code == 200
+        # watering_duration=6s at default 1380 mL/min → 138 mL consumed.
+        assert api.state._cistern_level_ml == pytest.approx(30000.0 - 138.0)
+
     def test_api_requires_json_body(self, client):
         response = client.post("/api/plants/manual-water")
         assert response.status_code == 422
@@ -198,3 +223,48 @@ class TestAPI:
                 files={"file": ("firmware.bin", b"\x00\x01\x02", "application/octet-stream")},
             )
             assert response.status_code == 502
+
+    def test_service_config_initial(self, client):
+        api.state._service_paused = False
+        with patch("bayesian_sprinkler.api.get_all_service_config",
+                   return_value={"paused": "0"}):
+            response = client.get("/api/service/config")
+            assert response.status_code == 200
+            assert response.json() == {"config": {"paused": "0"}}
+
+    def test_service_pause_removes_job_and_persists(self, client):
+        api.state._service_paused = False
+        with patch("bayesian_sprinkler.api.set_service_config") as mock_set:
+            with patch("bayesian_sprinkler.api._unschedule_inference") as mock_unsched:
+                response = client.post("/api/service/pause")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["paused"] is True
+        assert body["previous"] is False
+        assert api.state._service_paused is True
+        mock_set.assert_called_with("paused", "1")
+        mock_unsched.assert_called_once()
+
+    def test_service_resume_recreates_job_and_persists(self, client):
+        api.state._service_paused = True
+        with patch("bayesian_sprinkler.api.set_service_config") as mock_set:
+            with patch("bayesian_sprinkler.api._schedule_inference") as mock_sched:
+                response = client.post("/api/service/resume")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["paused"] is False
+        assert body["previous"] is True
+        assert api.state._service_paused is False
+        mock_set.assert_called_with("paused", "0")
+        mock_sched.assert_called_once()
+
+    def test_service_pause_is_idempotent(self, client):
+        api.state._service_paused = True
+        with patch("bayesian_sprinkler.api.set_service_config") as mock_set:
+            with patch("bayesian_sprinkler.api._unschedule_inference") as mock_unsched:
+                response = client.post("/api/service/pause")
+        assert response.status_code == 200
+        assert response.json()["paused"] is True
+        mock_unsched.assert_called_once()

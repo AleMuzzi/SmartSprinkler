@@ -34,7 +34,42 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_sensor_history_timestamp
             ON sensor_history(timestamp)
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS service_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
         conn.commit()
+
+
+def get_service_config(key: str, default: str | None = None) -> str | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT value FROM service_config WHERE key = ?", (key,)
+        ).fetchone()
+    if row is None:
+        return default
+    return row["value"]
+
+
+def set_service_config(key: str, value: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO service_config (key, value)
+               VALUES (?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+            (key, value),
+        )
+        conn.commit()
+
+
+def get_all_service_config() -> dict:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT key, value FROM service_config ORDER BY key"
+        ).fetchall()
+    return {row["key"]: row["value"] for row in rows}
 
 
 def insert_record(plant_type: str, soil_moisture: str, air_temperature: str,

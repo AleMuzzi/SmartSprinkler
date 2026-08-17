@@ -27,6 +27,8 @@ class SystemControlView extends StatelessWidget {
           children: [
             _ConnectivityCard(vm: vm),
             const SizedBox(height: 16),
+            _ServiceCard(vm: vm),
+            const SizedBox(height: 16),
             _UrlsCard(vm: vm),
           ],
         ),
@@ -105,6 +107,71 @@ class _ConnectivityCard extends StatelessWidget {
             url: vm.settings.bayesianUrl,
             status: vm.bayesianStatus,
             onRefresh: vm.fetchBayesianStatus,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceCard extends StatelessWidget {
+  final DashboardViewModel vm;
+
+  const _ServiceCard({required this.vm});
+
+  @override
+  Widget build(BuildContext context) {
+    final paused = vm.servicePaused;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.science_outlined, color: Color(0xFF2196F3), size: 22),
+              SizedBox(width: 8),
+              Text(
+                'Servizio di inferenza',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3748),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              paused ? 'In pausa' : 'Attivo',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2D3748),
+              ),
+            ),
+            subtitle: Text(
+              paused
+                  ? 'Il ciclo orario è fermo (weather e azioni manuali restano attivi)'
+                  : 'Inferenza ogni ora (al minuto 4)',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF718096)),
+            ),
+            value: !paused,
+            activeThumbColor: const Color(0xFF2196F3),
+            onChanged: (value) => vm.setServicePaused(!value),
           ),
         ],
       ),

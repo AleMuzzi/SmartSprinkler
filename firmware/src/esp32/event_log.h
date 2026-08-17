@@ -11,8 +11,9 @@
 // - Retention:       day files older than EVENT_LOG_RETENTION_DAYS are pruned.
 //
 // Each line is one JSON object:
-//   {"ts":<epoch>,"fw":"1.0.19","level":"info","category":"command",
-//    "event":"command_received","message":"...","details":{...}}
+//   {"ts":<epoch>,"time":"YYYY-MM-DD HH:MM:SS","fw":"1.0.19",
+//    "level":"info","category":"command","event":"command_received",
+//    "message":"...","details":{...}}
 //
 // Clock strategy:
 //   1. NTP (Europe/Rome, with DST) via configTzTime.
@@ -56,6 +57,7 @@ private:
     void writeLine(const String& line);
     void writePending(const String& line);
     String localDateStr() const;
+    String localDateTimeStr() const;
 
     File _day_file;
     String _day_file_name;

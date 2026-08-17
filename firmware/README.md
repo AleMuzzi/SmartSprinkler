@@ -258,7 +258,13 @@ Returns `{"status":"ok", "version":"<FW_VERSION>"}` where `FW_VERSION` is the au
 
 ### `GET /logs`
 
-Returns the ESP's on-device event-log tail as plain text (one JSON event per line), newest kept.
+Returns the ESP's on-device event-log tail as plain text (one JSON event per line), newest kept. Each line carries both the unix epoch (`ts`) and a human-readable local timestamp (`time`), e.g.:
+
+```
+{"ts":1786883569,"time":"2026-08-16 16:32:49","fw":"1.0.38","level":"info","category":"sensor","event":"sensor_invalid_reading","message":"...","details":{...}}
+```
+
+An empty `time` (or `"ts":0`) means the ESP had no clock yet (no NTP, no server fallback).
 
 - Without parameters, serves the logs of the current day (or the pre-sync `esp_nosync.log` while no clock is available).
 - `?date=YYYY-MM-DD` selects a specific day file. Wrong formats (or non-existent calendar dates like `2026-02-30`) get an HTTP `400` explaining the correct format, e.g.:
