@@ -58,9 +58,10 @@ TEST_CONFIG = {
 def client():
     with patch("bayesian_sprinkler.api.init_db"):
         with patch("bayesian_sprinkler.api.BackgroundScheduler"):
-            with patch("bayesian_sprinkler.api.insert_record") as mock_insert:
-                app = api.create_app(TEST_CONFIG)
-                yield TestClient(app)
+            with patch("bayesian_sprinkler.api.insert_record"):
+                with patch("bayesian_sprinkler.api.insert_plant_telemetry"):
+                    app = api.create_app(TEST_CONFIG)
+                    yield TestClient(app)
 
 
 class TestAPI:
@@ -268,3 +269,88 @@ class TestAPI:
         assert response.status_code == 200
         assert response.json()["paused"] is True
         mock_unsched.assert_called_once()
+
+
+class TestCharts:
+    """End-to-end checks for ``GET /api/charts`` using a real throwaway DB.
+    The shared ``client`` fixture patches every insert, so we point the DB at
+    a temp file, seed rows and read them back through the endpoint."""
+
+    @pytest.fixture
+    def db(self, tmp_path, monkeypatch):
+        from bayesian_sprinkler import database
+        from bayesian_sprinkler.audit_log import (
+            init_audit_table, init_esp_events_table, log_event,
+        )
+        monkeypatch.setattr(database, "DB_PATH", tmp_path / "charts.db")
+        database.init_db()
+        init_audit_table()
+        init_esp_events_table()
+        yield log_event
+
+    @pytest.fixture
+    def client(self):
+        with patch("bayesian_sprinkler.api.init_db"):
+            with patch("bayesian_sprinkler.api.BackgroundScheduler"):
+                with patch("bayesian_sprinkler.api.insert_record"):
+                    with patch("bayesian_sprinkler.api.insert_plant_telemetry"):
+                        app = api.create_app(TEST_CONFIG)
+                        yield TestClient(app)
+
+    def test_charts_soil_temperature_humidity(self, db, client):
+        from bayesian_sprinkler.database import insert_plant_telemetry
+        insert_plant_telemetry("habanero", 42.0, 28.0, 50.0)
+        insert_plant_telemetry("naga_morich", 38.0, 28.0, 50.0)
+        insert_plant_telemetry("habanero", 46.0, 29.0, 48.0)
+
+        resp = client.get("/api/charts?bucket=1h")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["plants"] == [
+            "habanero", "naga_morich", "carolina_reaper", "rosmarino"]
+        assert "habanero" in body["soil_moisture"]
+        assert body["soil_moisture"]["habanero"] == [
+            {"timestamp": body["soil_moisture"]["habanero"][0]["timestamp"],
+             "value": 44.0},
+        ]
+        assert body["soil_moisture"]["naga_morich"][0]["value"] == 38.0
+        # Ambient values deduped to one point per timestamp bucket.
+        assert len(body["temperature"]) == 1
+        assert body["humidity"][0]["value"] == pytest.approx(49.33, abs=0.02)
+
+    def test_charts_cistern_step_and_waterings(self, db, client):
+        db("command", "Watering triggered: Habanero",
+           details="target=HABANERO dose=200mL (8.70s) prob=0.90 threshold=0.5 "
+                   "hour=12 cistern=29800/30000mL")
+        db("command", "Manual watering: Rosmarino",
+           details="target=ROSMARINO duration=4s used=92mL "
+                   "cistern=29708/30000mL")
+        db("alert", "Water tank refilled",
+           details="previous_level=29708mL, new_level=30000mL")
+
+        resp = client.get("/api/charts")
+        body = resp.json()
+        cistern = body["cistern"]
+        assert [p["value"] for p in cistern] == [29800.0, 29708.0, 30000.0]
+        assert cistern[0]["timestamp"] <= cistern[1]["timestamp"]
+
+        waterings = body["waterings"]
+        assert waterings[0] == {
+            "timestamp": waterings[0]["timestamp"],
+            "plant": "habanero",
+            "dose_ml": 200.0,
+            "source": "inference",
+        }
+        assert waterings[1]["plant"] == "rosmarino"
+        assert waterings[1]["dose_ml"] == 92.0
+        assert waterings[1]["source"] == "manual"
+
+    def test_charts_historical_ambient_from_audit_log(self, db, client):
+        db("inference", "Inference cycle completed (0 watered)",
+           details="plants=['Habanero']; soil_moisture=60.00; air_temp=31.50; "
+                   "air_humid=47.00; cloud_cover=clear; rain=no; hour=12")
+
+        resp = client.get("/api/charts?bucket=1h")
+        body = resp.json()
+        assert body["temperature"][0]["value"] == 31.5
+        assert body["humidity"][0]["value"] == 47.0

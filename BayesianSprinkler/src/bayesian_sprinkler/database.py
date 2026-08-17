@@ -40,6 +40,20 @@ def init_db():
                 value TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS plant_telemetry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                plant_type TEXT NOT NULL,
+                soil_moisture_pct REAL,
+                air_temperature_c REAL,
+                air_humidity_pct REAL
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_plant_telemetry_timestamp
+            ON plant_telemetry(timestamp)
+        """)
         conn.commit()
 
 
@@ -93,3 +107,46 @@ def get_all_records() -> list[sqlite3.Row]:
         return conn.execute(
             "SELECT * FROM sensor_history ORDER BY timestamp"
         ).fetchall()
+
+
+def insert_plant_telemetry(plant_type: str, soil_moisture_pct: float,
+                           air_temperature_c: float,
+                           air_humidity_pct: float) -> None:
+    """Store one raw sensor snapshot for a single plant.
+
+    Unlike ``insert_record`` (which persists the discretised BN states),
+    this keeps the raw percentages/°C so the web/app charts show real
+    values over time. Written once per plant per inference cycle.
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO plant_telemetry
+               (timestamp, plant_type, soil_moisture_pct,
+                air_temperature_c, air_humidity_pct)
+               VALUES (?, ?, ?, ?, ?)""",
+            (now_local().isoformat(), plant_type,
+             soil_moisture_pct, air_temperature_c, air_humidity_pct),
+        )
+        conn.commit()
+
+
+def get_plant_telemetry(start_date: str | None = None,
+                        end_date: str | None = None,
+                        limit: int = 20000) -> list[sqlite3.Row]:
+    """Raw sensor snapshots (ascending time) scoped to a date range."""
+    query = (
+        "SELECT id, timestamp, plant_type, soil_moisture_pct, "
+        "air_temperature_c, air_humidity_pct "
+        "FROM plant_telemetry WHERE 1=1"
+    )
+    params: list = []
+    if start_date:
+        query += " AND substr(timestamp, 1, 10) >= ?"
+        params.append(start_date)
+    if end_date:
+        query += " AND substr(timestamp, 1, 10) <= ?"
+        params.append(end_date)
+    query += " ORDER BY timestamp ASC LIMIT ?"
+    params.append(limit)
+    with get_connection() as conn:
+        return conn.execute(query, params).fetchall()

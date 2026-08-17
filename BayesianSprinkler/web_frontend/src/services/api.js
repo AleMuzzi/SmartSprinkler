@@ -254,6 +254,19 @@ export async function setServicePaused(paused) {
   return res.json()
 }
 
+export async function fetchCharts({ startDate = null, endDate = null, bucket = '1h' } = {}) {
+  const { bayesianUrl } = getSettings()
+  const params = new URLSearchParams()
+  if (startDate) params.set('start_date', startDate)
+  if (endDate) params.set('end_date', endDate)
+  params.set('bucket', bucket)
+  const qs = params.toString()
+  const url = `${bayesianUrl}/api/charts${qs ? '?' + qs : ''}`
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) throw new Error(`Charts fetch failed: ${res.status}`)
+  return res.json()
+}
+
 export const PLANTS = [
   { id: 'habanero', label: 'Habanero' },
   { id: 'naga_morich', label: 'Naga Morich' },

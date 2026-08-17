@@ -7,6 +7,7 @@ import { SettingsPanel } from './components/SettingsPanel.jsx'
 import { FirmwareUpdatePanel } from './components/FirmwareUpdatePanel.jsx'
 import { CameraPanel } from './components/CameraPanel.jsx'
 import { AuditLog } from './components/AuditLog.jsx'
+import { ChartsView } from './components/ChartsView.jsx'
 import { HealthBar } from './components/StatusBadge.jsx'
 import { SimulationView } from './components/SimulationView.jsx'
 import { CisternCard, CisternWidget } from './components/SimulationView.jsx'
@@ -84,7 +85,7 @@ export default function App() {
         </div>
         {/* Nav tabs */}
         <div className="max-w-6xl mx-auto px-4 flex gap-1">
-          {['dashboard', 'control', 'simulation', 'camera', 'logs', 'settings'].map((tab) => (
+          {['dashboard', 'control', 'charts', 'simulation', 'camera', 'logs', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -94,7 +95,7 @@ export default function App() {
                   : 'text-gray-500 hover:bg-gray-100'
               }`}
             >
-              {tab === 'dashboard' ? 'Dashboard' : tab === 'control' ? 'Control' : tab === 'simulation' ? 'Simulation' : tab === 'camera' ? 'Camera' : tab === 'logs' ? 'Logs' : 'Settings'}
+              {tab === 'dashboard' ? 'Dashboard' : tab === 'control' ? 'Control' : tab === 'charts' ? 'Statistics' : tab === 'simulation' ? 'Simulation' : tab === 'camera' ? 'Camera' : tab === 'logs' ? 'Logs' : 'Settings'}
             </button>
           ))}
         </div>
@@ -157,6 +158,10 @@ export default function App() {
 
         {activeTab === 'control' && (
           <ControlPanel onMessage={showToast} />
+        )}
+
+        {activeTab === 'charts' && (
+          <ChartsView />
         )}
 
         {activeTab === 'simulation' && (

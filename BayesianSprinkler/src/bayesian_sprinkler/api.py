@@ -1,8 +1,9 @@
 import logging
+import re
 import time
 import traceback
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Lock
 
 import yaml
@@ -27,6 +28,8 @@ from bayesian_sprinkler.bayesian_network import SmartSprinklerBN
 from bayesian_sprinkler.database import (
     init_db,
     insert_record,
+    insert_plant_telemetry,
+    get_plant_telemetry,
     get_service_config,
     set_service_config,
     get_all_service_config,
@@ -85,6 +88,20 @@ def _plant_soil_thresholds(plant_cfg: dict) -> dict:
         "dry": plant.get("dry", global_sm.get("dry", 35)),
         "moist": plant.get("moist", global_sm.get("moist", 60)),
     }
+
+
+def _plant_from_message(message: str, plants_cfg: dict) -> str | None:
+    """Map a log message containing a badge/display name back to its plant key.
+
+    Messages like ``Watering triggered: Habanero`` or ``Manual watering:
+    Naga Morich`` carry the human-readable display name; we match the
+    first configured plant whose ``display_name`` appears in the message.
+    Returns ``None`` when no plant matches.
+    """
+    for plant_name, cfg in plants_cfg.items():
+        if cfg.get("display_name") in message:
+            return plant_name
+    return None
 
 
 # ── Request / Response models ────────────────────────────────────────
@@ -831,6 +848,199 @@ def _register_routes(app: FastAPI):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    # Buckets for the charts: each maps to an aggregation window in minutes.
+    _BUCKETS_MINUTES = {
+        "15m": 15,
+        "30m": 30,
+        "1h": 60,
+        "6h": 360,
+        "1d": 1440,
+    }
+
+    def _bucket_start(iso_ts: str, bucket: str) -> str:
+        """Floor an ISO timestamp to the start of its aggregation window.
+
+        Timestamps here carry the local offset (Europe/Rome) for recent rows
+        but historical rows are naive, so we drop the tzinfo before flooring
+        — walls clicks compare equal regardless of the offset presence. The
+        returned key is a naive local ``YYYY-MM-DDTHH:MM:SS``. ``bucket`` not
+        in ``_BUCKETS_MINUTES`` returns the input unchanged.
+        """
+        minutes = _BUCKETS_MINUTES.get(bucket)
+        if minutes is None:
+            return iso_ts
+        dt = datetime.fromisoformat(iso_ts).replace(tzinfo=None)
+        if minutes < 60:
+            floored = dt.replace(minute=(dt.minute // minutes) * minutes,
+                                 second=0, microsecond=0)
+        else:
+            hours = minutes // 60
+            floored = dt.replace(hour=(dt.hour // hours) * hours,
+                                 minute=0, second=0, microsecond=0)
+        return floored.isoformat()
+
+    @app.get(
+        "/api/charts",
+        tags=["Charts"],
+        summary="Time-series data for the charts view",
+        responses={
+            200: {"description": "Bucketed raw telemetry + cistern step + watering events"},
+        },
+    )
+    def charts(
+        start_date: str | None = None,
+        end_date: str | None = None,
+        bucket: str = "1h",
+        limit: int = 100000,
+    ):
+        """Return chart series built from the raw sensor history.
+
+        - ``soil_moisture``: per-plant raw % from ``plant_telemetry``
+          (recorded since the telemetry feature shipped; older rows do not
+          exist because only discretised values were stored before).
+        - ``temperature`` / ``humidity``: raw ambient values from
+          ``plant_telemetry`` when available, falling back to the raw values
+          embedded in the historical ``audit_log`` inference-cycle details
+          (``air_temp=..; air_humid=..``) so the charts cover the full log
+          history.
+        - ``cistern``: step-series from the levels logged on watering,
+          refill and low-alert events.
+        - ``waterings``: every watering trigger with its dispensed dose.
+
+        ``bucket`` averages the continuous series; the event-driven
+        ``cistern``/``waterings`` keep their raw timestamps so the step is
+        never dulled.
+        """
+        telemetry = get_plant_telemetry(start_date=start_date, end_date=end_date)
+
+        # Raw ambient temperature/humidity from live telemetry.
+        temp_pts: list[tuple[str, float]] = []
+        hum_pts: list[tuple[str, float]] = []
+        seen_ts: set[str] = set()
+        for row in telemetry:
+            ts = row["timestamp"]
+            if ts in seen_ts:
+                continue
+            seen_ts.add(ts)
+            if row["air_temperature_c"] is not None:
+                temp_pts.append((ts, float(row["air_temperature_c"])))
+            if row["air_humidity_pct"] is not None:
+                hum_pts.append((ts, float(row["air_humidity_pct"])))
+
+        # Per-plant soil moisture series (raw %).
+        soil_pts: dict[str, list[tuple[str, float]]] = {
+            plant_name: [] for plant_name in state.config["plants"]
+        }
+        for row in telemetry:
+            plant = row["plant_type"]
+            if plant in soil_pts and row["soil_moisture_pct"] is not None:
+                soil_pts[plant].append((row["timestamp"], float(row["soil_moisture_pct"])))
+
+        # Historical ambient values + cistern + watering events live in the
+        # append-only audit_log, so we read it once and parse in memory.
+        hist = get_log_entries(start_date=start_date, end_date=end_date,
+                               limit=limit)
+
+        cistern_pts: list[tuple[str, float]] = []
+        watering_pts: list[dict] = []
+
+        # Patterns for the details fields written by the server.
+        _CISTERN_RE = re.compile(r"cistern=([0-9.]+)/")
+        _REFILL_RE = re.compile(r"new_level=([0-9.]+)mL")
+        _LOW_RE = re.compile(r"estimated_level=([0-9.]+)mL")
+        _DOSE_RE = re.compile(r"dose=([0-9.]+)mL")
+        _USED_RE = re.compile(r"used=([0-9.]+)mL")
+        _TEMP_RE = re.compile(r"air_temp=(-?[0-9.]+)")
+        _HUM_RE = re.compile(r"air_humid=(-?[0-9.]+)")
+
+        known_temp_ts = {ts for ts, _ in temp_pts}
+        known_hum_ts = {ts for ts, _ in hum_pts}
+
+        for entry in hist:
+            details = entry["details"] or ""
+            msg = entry["message"] or ""
+            ts = entry["timestamp"]
+            category = entry["category"]
+
+            # Historical temperature/humidity from inference detail lines,
+            # merged only for instants with no live telemetry yet.
+            if category == "inference":
+                tm = _TEMP_RE.search(details)
+                hm = _HUM_RE.search(details)
+                if tm and ts not in known_temp_ts:
+                    temp_pts.append((ts, float(tm.group(1))))
+                    known_temp_ts.add(ts)
+                if hm and ts not in known_hum_ts:
+                    hum_pts.append((ts, float(hm.group(1))))
+                    known_hum_ts.add(ts)
+
+            # Watering triggers with the dispensed dose (inference + manual).
+            if category == "command":
+                dm = _DOSE_RE.search(details)
+                um = _USED_RE.search(details)
+                dose = None
+                source = None
+                if "Watering triggered" in msg and dm:
+                    dose = float(dm.group(1))
+                    source = "inference"
+                elif "Manual watering" in msg and um:
+                    dose = float(um.group(1))
+                    source = "manual"
+                if dose is not None:
+                    plant = _plant_from_message(msg, state.config["plants"])
+                    if plant is not None:
+                        watering_pts.append({
+                            "timestamp": ts,
+                            "plant": plant,
+                            "dose_ml": dose,
+                            "source": source,
+                        })
+
+            # Cistern level snapshots: watering events, refill, low alert.
+            cm = _CISTERN_RE.search(details)
+            if cm and category == "command":
+                cistern_pts.append((ts, float(cm.group(1))))
+                continue
+            rm = _REFILL_RE.search(details)
+            if rm and "refilled" in msg:
+                cistern_pts.append((ts, float(rm.group(1))))
+                continue
+            lm = _LOW_RE.search(details)
+            if lm and "low alert" in msg:
+                cistern_pts.append((ts, float(lm.group(1))))
+
+        def _bucket_avg(points: list[tuple[str, float]]) -> list[dict]:
+            """Average (ts, value) points into the requested bucket window."""
+            if not points:
+                return []
+            if bucket not in _BUCKETS_MINUTES:
+                return [{"timestamp": ts, "value": round(v, 2)}
+                        for ts, v in points]
+            agg: dict[str, list[float]] = {}
+            for ts, v in points:
+                key = _bucket_start(ts, bucket)
+                agg.setdefault(key, []).append(v)
+            return [{"timestamp": key, "value": round(sum(vs) / len(vs), 2)}
+                    for key, vs in sorted(agg.items())]
+
+        cistern_series = [{"timestamp": ts, "value": round(v, 1)}
+                          for ts, v in sorted(cistern_pts)]
+        watering_series = sorted(watering_pts, key=lambda w: w["timestamp"])
+
+        return {
+            "bucket": bucket,
+            "start_date": start_date,
+            "end_date": end_date,
+            "plants": list(state.config["plants"].keys()),
+            "soil_moisture": {
+                plant: _bucket_avg(soil_pts[plant]) for plant in soil_pts
+            },
+            "temperature": _bucket_avg(temp_pts),
+            "humidity": _bucket_avg(hum_pts),
+            "cistern": cistern_series,
+            "waterings": watering_series,
+        }
+
     @app.get(
         "/api/plants/status",
         response_model=PlantStatusResponse,
@@ -1197,6 +1407,16 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                 plant_sm = 0.0
             soil = st.esp.discretize_soil_moisture(
                 plant_sm, _plant_soil_thresholds(cfg))
+
+            # Raw sensor snapshot for the time-series charts. Kept alongside
+            # the discretised ``insert_record`` below: the BN consumes the
+            # states, the charts consume the raw percentages/°C.
+            insert_plant_telemetry(
+                plant_type=plant_name,
+                soil_moisture_pct=plant_sm,
+                air_temperature_c=raw_temp,
+                air_humidity_pct=raw_humid,
+            )
 
             logger.info(
                 "Inference cycle — %s: soil=%s (raw=%s), temp: %s°C, humidity: %s%%  |  "
