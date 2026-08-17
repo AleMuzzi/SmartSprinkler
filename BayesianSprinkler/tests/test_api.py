@@ -271,6 +271,88 @@ class TestAPI:
         mock_unsched.assert_called_once()
 
 
+class TestWeatherFallback:
+    """Web-forecast fallback when the ESP reports invalid readings (-1)."""
+
+    @pytest.fixture(autouse=True)
+    def _seed_weather_cache(self):
+        api.state._cached_weather = {
+            "cloud_cover": "clear",
+            "rain_forecast": "no",
+            "temperature": 31.5,
+            "humidity": 58.0,
+        }
+        yield
+
+    def test_weather_status_uses_esp_when_valid(self, client):
+        with patch.object(api.state.esp, "get_status") as mock_status:
+            mock_status.return_value = {
+                "air_temperature": "28.5",
+                "air_humidity": "60.0",
+                "soil_moisture": "45.0",
+                "water_pump": "off",
+                "water_low_alert": "off",
+            }
+            response = client.get("/api/weather/status")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["temperature"] == 28.5
+        assert body["humidity"] == 60.0
+        assert body["temperature_source"] == "esp"
+        assert body["humidity_source"] == "esp"
+
+    def test_weather_status_falls_back_to_web_on_minus_one(self, client):
+        with patch.object(api.state.esp, "get_status") as mock_status:
+            mock_status.return_value = {
+                "air_temperature": "-1.0",
+                "air_humidity": "-1.0",
+                "soil_moisture": "45.0",
+                "water_pump": "off",
+                "water_low_alert": "off",
+            }
+            response = client.get("/api/weather/status")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["temperature"] == 31.5
+        assert body["humidity"] == 58.0
+        assert body["temperature_source"] == "web"
+        assert body["humidity_source"] == "web"
+
+    def test_dashboard_weather_falls_back_to_web_on_minus_one(self, client):
+        with patch.object(api.state.esp, "get_status") as mock_status:
+            mock_status.return_value = {
+                "air_temperature": "-1.0",
+                "air_humidity": "-1.0",
+                "soil_moisture": "45.0",
+                "water_pump": "off",
+                "water_low_alert": "off",
+            }
+            response = client.get("/api/dashboard")
+        assert response.status_code == 200
+        weather = response.json()["weather"]
+        assert weather["temperature"] == 31.5
+        assert weather["humidity"] == 58.0
+        assert weather["temperature_source"] == "web"
+        assert weather["humidity_source"] == "web"
+
+    def test_dashboard_weather_uses_esp_when_valid(self, client):
+        with patch.object(api.state.esp, "get_status") as mock_status:
+            mock_status.return_value = {
+                "air_temperature": "24.0",
+                "air_humidity": "55.0",
+                "soil_moisture": "45.0",
+                "water_pump": "off",
+                "water_low_alert": "off",
+            }
+            response = client.get("/api/dashboard")
+        assert response.status_code == 200
+        weather = response.json()["weather"]
+        assert weather["temperature"] == 24.0
+        assert weather["humidity"] == 55.0
+        assert weather["temperature_source"] == "esp"
+        assert weather["humidity_source"] == "esp"
+
+
 class TestCharts:
     """End-to-end checks for ``GET /api/charts`` using a real throwaway DB.
     The shared ``client`` fixture patches every insert, so we point the DB at

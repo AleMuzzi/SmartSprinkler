@@ -1,6 +1,6 @@
 import React from 'react'
 
-function SensorCard({ label, value, unit, icon, color = 'blue' }) {
+function SensorCard({ label, value, unit, icon, color = 'blue', source }) {
   const colorMap = {
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
     green: 'bg-green-50 border-green-200 text-green-700',
@@ -22,7 +22,14 @@ function SensorCard({ label, value, unit, icon, color = 'blue' }) {
           {icon}
         </div>
         <div>
-          <p className="text-xs opacity-75 uppercase tracking-wide">{label}</p>
+          <p className="text-xs opacity-75 uppercase tracking-wide flex items-center gap-1.5">
+            {label}
+            {source === 'web' && (
+              <span title="Dato dal web (sensore locale non disponibile)" className="flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600 bg-blue-100 rounded-full px-1.5 py-px">
+                🌐 web
+              </span>
+            )}
+          </p>
           <p className="text-xl font-bold">{value ?? '--'}<span className="text-sm ml-1 opacity-75">{unit}</span></p>
         </div>
       </div>
@@ -50,18 +57,26 @@ function PumpStatus({ isOn, plant }) {
   )
 }
 
-export function TelemetryPanel({ espData }) {
+export function TelemetryPanel({ espData, weather }) {
   const parse = (v) => {
     if (v === null || v === undefined || v === 'nan') return null
     const n = parseFloat(v)
     return isNaN(n) ? null : n
   }
+  // The server resolves ambient readings: when the DHT reports -1 (invalid)
+  // it substitutes the web forecast and marks the source as "web". Prefer
+  // the resolved value so the dashboard never shows -1.
+  const resolvedTemp = weather?.temperature ?? parse(espData?.air_temperature)
+  const resolvedHumid = weather?.humidity ?? parse(espData?.air_humidity)
+  const tempSource = weather?.temperature_source ?? 'esp'
+  const humidSource = weather?.humidity_source ?? 'esp'
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <SensorCard
         label="Air Temperature"
-        value={parse(espData?.air_temperature)?.toFixed(1)}
+        value={resolvedTemp?.toFixed(1)}
         unit="°C"
+        source={tempSource}
         icon={
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m8-9H5m14 6h-4m-5-8a4 4 0 100-8 4 4 0 000 8z"/>
@@ -71,8 +86,9 @@ export function TelemetryPanel({ espData }) {
       />
       <SensorCard
         label="Air Humidity"
-        value={parse(espData?.air_humidity)?.toFixed(1)}
+        value={resolvedHumid?.toFixed(1)}
         unit="%"
+        source={humidSource}
         icon={
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.9 2.999z"/>

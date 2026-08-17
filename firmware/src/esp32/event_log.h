@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <esp_system.h>
 
 // Local, flash-backed event log.
 //
@@ -58,6 +59,13 @@ private:
     void writePending(const String& line);
     String localDateStr() const;
     String localDateTimeStr() const;
+
+    // Self-heal watermark: NVS flag set just before every LittleFS write and
+    // cleared after the filesystem flush returns. If a boot finds the flag
+    // still armed, the previous boot crashed *during* a LittleFS write, so the
+    // filesystem metadata may be inconsistent -> begin() formats it.
+    void armWrite();
+    void disarmWrite();
 
     File _day_file;
     String _day_file_name;

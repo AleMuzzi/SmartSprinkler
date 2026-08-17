@@ -59,6 +59,7 @@ class AppState:
             "cloud_cover": "cloudy",
             "rain_forecast": "no",
             "temperature": None,
+            "humidity": None,
         }
         self._water_low_alert: bool = False
         self._cistern_level_ml: float = 30000.0  # default; reset by create_app from config
@@ -129,6 +130,12 @@ class WeatherResponse(BaseModel):
     humidity: float | None
     cloud_cover: str
     rain_forecast: str
+    # Provenance of each reading: "esp" when the DHT delivered a live value,
+    # "web" when we fell back to the forecast because the ESP reported an
+    # invalid reading (-1 / nan). Lets the UI show a small icon hinting that
+    # the value is not measured on-site.
+    temperature_source: str = "esp"
+    humidity_source: str = "esp"
 
 
 class PlantStatusResponse(BaseModel):
@@ -338,6 +345,33 @@ def _to_float(value) -> float | None:
         except (ValueError, TypeError):
             return None
     return None
+
+
+def _resolve_ambient(esp_status: dict, wx: dict) -> tuple[float | None, str, float | None, str]:
+    """Resolve ambient temperature/humidity with a web fallback.
+
+    Returns ``(temperature, temperature_source, humidity, humidity_source)``
+    where each source is ``"esp"`` when the ESP reported a usable value
+    (>= 0) and ``"web"`` when we substituted the cached forecast because the
+    reading was missing or invalid (``-1`` / ``nan``). Values remain
+    ``None`` only when BOTH sources are empty.
+    """
+    raw_temp = _to_float(esp_status.get("air_temperature"))
+    raw_humid = _to_float(esp_status.get("air_humidity"))
+
+    if raw_temp is None or raw_temp < 0:
+        raw_temp = _to_float(wx.get("temperature"))
+        temp_source = "web"
+    else:
+        temp_source = "esp"
+
+    if raw_humid is None or raw_humid < 0:
+        raw_humid = _to_float(wx.get("humidity"))
+        humid_source = "web"
+    else:
+        humid_source = "esp"
+
+    return raw_temp, temp_source, raw_humid, humid_source
 
 
 def _register_routes(app: FastAPI):
@@ -621,8 +655,11 @@ def _register_routes(app: FastAPI):
         cfg = state.config["plants"][req.plant_type]
 
         soil = state.esp.discretize_soil_moisture(float(status["soil_moisture"]))
-        temp = state.esp.discretize_temperature(float(status["air_temperature"]))
-        humid = state.esp.discretize_humidity(float(status["air_humidity"]))
+        raw_temp, _tsrc, raw_humid, _hsrc = _resolve_ambient(status or {}, wx)
+        temp = state.esp.discretize_temperature(
+            raw_temp if raw_temp is not None else 25)
+        humid = state.esp.discretize_humidity(
+            raw_humid if raw_humid is not None else 50)
 
         for p in state.config["plants"]:
             need = "yes" if p == req.plant_type else "no"
@@ -1058,8 +1095,8 @@ def _register_routes(app: FastAPI):
             esp_status = {}
 
         raw_soil = _to_float(esp_status.get("soil_moisture")) if esp_status else None
-        raw_temp = _to_float(esp_status.get("air_temperature")) if esp_status else None
-        raw_humid = _to_float(esp_status.get("air_humidity")) if esp_status else None
+        raw_temp, _temp_source, raw_humid, _humid_source = _resolve_ambient(
+            esp_status or {}, state._cached_weather)
         if raw_soil is None:
             raw_soil = 0
         if raw_temp is None:
@@ -1114,30 +1151,24 @@ def _register_routes(app: FastAPI):
         },
     )
     def get_weather_status():
-        raw_temp = None
-        raw_humid = None
+        esp_status: dict = {}
 
         try:
             esp_status = state.esp.get_status()
             _capture_esp_status(state, esp_status)
-            raw_temp = _to_float(esp_status.get("air_temperature"))
-            raw_humid = _to_float(esp_status.get("air_humidity"))
         except Exception:
             pass
 
-        # Fall back to the cached weather forecast when the ESP didn't
-        # report usable values. Only return None if BOTH sources are empty
-        # so the UI can show "--" instead of misleading fake numbers.
-        if raw_temp is None or raw_temp < 0:
-            raw_temp = _to_float(state._cached_weather.get("temperature"))
-        if raw_humid is None or raw_humid < 0:
-            raw_humid = _to_float(state._cached_weather.get("humidity"))
+        raw_temp, temp_source, raw_humid, humid_source = _resolve_ambient(
+            esp_status, state._cached_weather)
 
         return WeatherResponse(
             temperature=raw_temp,
             humidity=raw_humid,
             cloud_cover=state._cached_weather["cloud_cover"],
             rain_forecast=state._cached_weather["rain_forecast"],
+            temperature_source=temp_source,
+            humidity_source=humid_source,
         )
 
     @app.get(
@@ -1160,19 +1191,17 @@ def _register_routes(app: FastAPI):
             pass
 
         raw_soil_avg = _to_float(esp_status.get("soil_moisture")) if esp_status else 0
-        raw_temp = _to_float(esp_status.get("air_temperature")) if esp_status else None
-        raw_humid = _to_float(esp_status.get("air_humidity")) if esp_status else None
         if raw_soil_avg is None:
             raw_soil_avg = 0
+
+        raw_temp, temp_source, raw_humid, humid_source = _resolve_ambient(
+            esp_status or {}, state._cached_weather)
+        # Keep hard "no data" only when the fallback also came up empty so
+        # the BN still has a coherent discrete state to reason about.
         if raw_temp is None:
             raw_temp = 25
         if raw_humid is None:
             raw_humid = 50
-
-        if raw_temp < 0:
-            raw_temp = _to_float(state._cached_weather.get("temperature")) or 25.0
-        if raw_humid < 0:
-            raw_humid = 50.0
 
         temp = state.esp.discretize_temperature(raw_temp)
         humid = state.esp.discretize_humidity(raw_humid)
@@ -1216,10 +1245,12 @@ def _register_routes(app: FastAPI):
             water_low_alert=esp_status.get("water_low_alert") == "on",
             plants=plants,
             weather=WeatherResponse(
-                temperature=state._cached_weather.get("temperature"),
+                temperature=raw_temp,
                 humidity=raw_humid,
                 cloud_cover=state._cached_weather["cloud_cover"],
                 rain_forecast=state._cached_weather["rain_forecast"],
+                temperature_source=temp_source,
+                humidity_source=humid_source,
             ),
             pump_on=pump_on,
         )
@@ -1365,25 +1396,18 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             )
         st._water_low_alert = water_low
 
-        raw_temp = _to_float(status.get("air_temperature"))
-        raw_humid = _to_float(status.get("air_humidity"))
-        if raw_temp is None or raw_temp < 0:
-            # The ESP serialises readings as text ("nan", "undef", "21.5"…).
-            # Fall back to the cached forecast before giving up, so a single
-            # bad reading doesn't abort the whole cycle.
-            raw_temp = _to_float(wx.get("temperature"))
-        if raw_humid is None or raw_humid < 0:
-            raw_humid = None
+        raw_temp, temp_source, raw_humid, humid_source = _resolve_ambient(status, wx)
         if raw_temp is None:
             raise ValueError(
                 f"Inference cycle: invalid air_temperature "
                 f"{status.get('air_temperature')!r} and no usable fallback "
-                f"(ESP/DHT invalid)"
+                f"(ESP/DHT invalid, web forecast empty)"
             )
         if raw_humid is None:
             raise ValueError(
                 f"Inference cycle: invalid air_humidity "
-                f"{status.get('air_humidity')!r} (ESP/DHT invalid)"
+                f"{status.get('air_humidity')!r} and no usable fallback "
+                f"(ESP/DHT invalid, web forecast empty)"
             )
         temp = st.esp.discretize_temperature(raw_temp)
         humid = st.esp.discretize_humidity(raw_humid)

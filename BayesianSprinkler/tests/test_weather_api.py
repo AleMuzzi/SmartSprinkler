@@ -29,6 +29,11 @@ class TestWeatherAPILive:
         assert "temperature" in result
         assert result["temperature"] is None or isinstance(result["temperature"], (int, float))
 
+    def test_fetch_returns_humidity(self, weather_client):
+        result = weather_client.fetch()
+        assert "humidity" in result
+        assert result["humidity"] is None or isinstance(result["humidity"], (int, float))
+
     def test_fetch_complete_structure(self, weather_client):
         result = weather_client.fetch()
-        assert set(result.keys()) == {"cloud_cover", "rain_forecast", "temperature"}
+        assert set(result.keys()) == {"cloud_cover", "rain_forecast", "temperature", "humidity"}

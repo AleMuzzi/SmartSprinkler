@@ -60,9 +60,11 @@ void EventPublisher::sendBatch() {
     // Reuse a JsonDocument right away is not needed; batch body is already JSON.
     _request_uri = _base_url + "/api/esp/events";
     _request = _client.beginRequest(_request_uri.c_str());
-    _request->setMethod(HTTP_POST)
-        ->setContentType("application/json")
-        ->setContent(_batch_body.c_str())
+    // Note: this ArduinoMongoose release drops _contentType in send(); the
+    // header must be attached so the server can parse the JSON body.
+    _request->setMethod(HTTP_POST);
+    _request->addHeader("Content-Type", "application/json");
+    _request->setContent(_batch_body.c_str())
         ->onResponse([this](MongooseHttpClientResponse* resp) { onResponse(resp); })
         ->onClose([this]() { onClose(); });
     _client.send(_request);

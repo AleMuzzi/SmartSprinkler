@@ -25,7 +25,7 @@ function Toast({ message, type }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [toast, setToast] = useState(null)
-  const { espData, espHealthy, waterLowAlert, error, loading } = useEspData()
+  const { espData, weather, espHealthy, waterLowAlert, error, loading } = useEspData()
   const { plantStatuses, refetch: refetchPlantStatuses } = usePlantStatuses()
   const { cistern, refill: refillCistern, refetch: refetchCistern, cisternError } = useCisternStatus(getSettings().bayesianUrl)
 
@@ -115,7 +115,7 @@ export default function App() {
                 ⚠️ ESP32 unreachable — check wiring and IP address
               </div>
             ) : (
-              <TelemetryPanel espData={espData} />
+              <TelemetryPanel espData={espData} weather={weather} />
             )}
 
             {/* Cistern — production status, always shown outside the simulator */}

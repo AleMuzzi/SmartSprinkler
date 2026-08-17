@@ -122,7 +122,7 @@ class WeatherClient:
         params = {
             "latitude": self.lat,
             "longitude": self.lon,
-            "current": "cloud_cover,temperature_2m",
+            "current": "cloud_cover,temperature_2m,relative_humidity_2m",
             "daily": "precipitation_sum",
             "timezone": "auto",
             "forecast_days": 1,
@@ -134,7 +134,12 @@ class WeatherClient:
             return self._parse(data)
         except Exception:
             logger.warning("Weather API unavailable, using conservative defaults")
-            return {"cloud_cover": "cloudy", "rain_forecast": "no", "temperature": None}
+            return {
+                "cloud_cover": "cloudy",
+                "rain_forecast": "no",
+                "temperature": None,
+                "humidity": None,
+            }
 
     @staticmethod
     def _parse(data: dict) -> dict:
@@ -144,9 +149,11 @@ class WeatherClient:
         raw_cloud = current.get("cloud_cover", 100)
         raw_precip = (daily.get("precipitation_sum", [0]) or [0])[0]
         raw_temp = current.get("temperature_2m")
+        raw_humid = current.get("relative_humidity_2m")
 
         return {
             "cloud_cover": "cloudy" if raw_cloud >= 50 else "clear",
             "rain_forecast": "yes" if raw_precip > 0 else "no",
             "temperature": raw_temp,
+            "humidity": raw_humid,
         }

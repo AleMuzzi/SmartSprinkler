@@ -2,6 +2,11 @@
 
 #include <time.h>
 
+#include <nvs_flash.h>
+#include <Preferences.h>
+#include <esp_littlefs.h>
+#include <esp_partition.h>
+
 #if __has_include("fw_version.h")
 #include "fw_version.h"
 #endif
@@ -12,12 +17,84 @@
 // Events written to the log when other subsystems cannot produce a timestamp.
 // We rely on NTP or the server fallback; see EventLog::epochSec().
 static const char* LOG_DIR = "/logs";
+// NVS namespace/keys for the self-heal watermark, separate from the "server"
+// namespace used by main.cpp so nothing else clobbers it.
+static const char* HEAL_NS   = "logself";
+static const char* HEAL_KEY  = "armed";
 
 static bool sortNameAsc(const String& a, const String& b) {
     return a < b;
 }
 
+void EventLog::armWrite() {
+    Preferences prefs;
+    if (prefs.begin(HEAL_NS, false)) {
+        prefs.putUChar(HEAL_KEY, 1);
+        prefs.end();
+    }
+}
+
+void EventLog::disarmWrite() {
+    Preferences prefs;
+    if (prefs.begin(HEAL_NS, false)) {
+        prefs.putUChar(HEAL_KEY, 0);
+        prefs.end();
+    }
+}
+
+// True when the previous boot crashed while a LittleFS write was in flight
+// (armed but never disarmed). Reset reasons that indicate a crash rather than
+// a clean restart; the firmware's own `pio device monitor` resets and the
+// ordinary `esp_restart()` used by OTA are NOT listed here.
+static bool previousBootCrashedMidWrite() {
+    Preferences prefs;
+    if (!prefs.begin(HEAL_NS, true)) {
+        return false;
+    }
+    const bool armed = prefs.getUChar(HEAL_KEY, 0) == 1;
+    prefs.end();
+    if (!armed) {
+        return false;
+    }
+    switch (esp_reset_reason()) {
+        case ESP_RST_PANIC:
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT:
+        case ESP_RST_BROWNOUT:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Format the LittleFS partition directly. LittleFS.format() asserts when the
+// partition label is NULL (the default until begin() is called with an
+// explicit label), so we resolve the partition by type/subtype and format it
+// via its esp_partition_t handle instead.
+static bool formatLittleFs() {
+    const esp_partition_t* part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
+    if (part == nullptr) {
+        Serial.println("! EventLog: no SPIFFS/LittleFS partition found");
+        return false;
+    }
+    esp_err_t err = esp_littlefs_format_partition(part);
+    if (err != ESP_OK) {
+        Serial.printf("! EventLog: LittleFS format failed: %s\n", esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
 void EventLog::begin() {
+    if (previousBootCrashedMidWrite()) {
+        Serial.println("! EventLog: previous boot crashed during a write; reformatting LittleFS");
+        if (formatLittleFs()) {
+            Serial.println("! EventLog: LittleFS reformatted OK");
+        }
+    }
+    armWrite();
     if (!LittleFS.begin(true)) {
         Serial.println("! EventLog: LittleFS mount failed");
         return;
@@ -26,6 +103,7 @@ void EventLog::begin() {
         LittleFS.mkdir(LOG_DIR);
     }
     rotateToToday();
+    disarmWrite();
 }
 
 uint32_t EventLog::epochSec() const {
@@ -160,6 +238,7 @@ void EventLog::appendDetails(const char* category, const char* level, const char
     String line;
     serializeJson(doc, line);
 
+    armWrite();
     if (rotateToToday() && _day_file) {
         _day_file.print(line);
         _day_file.print('\n');
@@ -167,6 +246,7 @@ void EventLog::appendDetails(const char* category, const char* level, const char
     }
 
     writePending(line);
+    disarmWrite();
 }
 
 void EventLog::writePending(const String& line) {
@@ -248,11 +328,16 @@ void EventLog::ackPending(size_t count) {
     }
     in.close();
     if (skipped == 0) return;
+    armWrite();
     File out = LittleFS.open(path.c_str(), FILE_WRITE);
-    if (!out) return;
+    if (!out) {
+        disarmWrite();
+        return;
+    }
     out.print(rest);
     out.flush();
     out.close();
+    disarmWrite();
 }
 
 // Appends the trailing ``max_lines`` lines of ``f`` (newest kept) into ``out``,

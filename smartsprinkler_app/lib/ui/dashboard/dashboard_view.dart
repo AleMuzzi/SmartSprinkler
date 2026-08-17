@@ -528,6 +528,7 @@ class _WeatherFooter extends StatelessWidget {
             value: (w?.temperature != null)
                 ? '${w!.temperature!.toStringAsFixed(1)}°C'
                 : '--',
+            sourceIsWeb: w?.temperatureSource == 'web',
           ),
           _WeatherTile(
             icon: Icons.water_drop,
@@ -535,6 +536,7 @@ class _WeatherFooter extends StatelessWidget {
             value: (w?.humidity != null)
                 ? '${w!.humidity!.toStringAsFixed(0)}%'
                 : '--',
+            sourceIsWeb: w?.humiditySource == 'web',
           ),
           _WeatherTile(
             icon: Icons.cloudy_snowing,
@@ -556,18 +558,38 @@ class _WeatherTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  // True when the reading was substituted with the web forecast because the
+  // on-site DHT reported -1. Renders a small badge next to the value.
+  final bool sourceIsWeb;
 
   const _WeatherTile({
     required this.icon,
     required this.label,
     required this.value,
+    this.sourceIsWeb = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF718096)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF718096)),
+            if (sourceIsWeb) ...[
+              const SizedBox(width: 4),
+              Tooltip(
+                message: 'Dato dal web (sensore locale non disponibile)',
+                child: Icon(
+                  Icons.public,
+                  size: 12,
+                  color: const Color(0xFF718096),
+                ),
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 4),
         Text(
           value,
