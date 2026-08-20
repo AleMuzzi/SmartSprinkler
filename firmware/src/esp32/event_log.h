@@ -2,10 +2,11 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <LittleFS.h>
+#include <FFat.h>
 #include <esp_system.h>
 
-// Local, flash-backed event log.
+// Local, flash-backed event log (stored on the FAT+wear-leveling partition,
+// not LittleFS — native ESP-IDF ``FFat`` backend).
 //
 // - Day file:        /logs/esp_YYYYMMDD.log  (rotated daily at midnight)
 // - Pending queue:   /logs/pending.log       (unsent events, forwarded to the server)
@@ -59,13 +60,6 @@ private:
     void writePending(const String& line);
     String localDateStr() const;
     String localDateTimeStr() const;
-
-    // Self-heal watermark: NVS flag set just before every LittleFS write and
-    // cleared after the filesystem flush returns. If a boot finds the flag
-    // still armed, the previous boot crashed *during* a LittleFS write, so the
-    // filesystem metadata may be inconsistent -> begin() formats it.
-    void armWrite();
-    void disarmWrite();
 
     File _day_file;
     String _day_file_name;
