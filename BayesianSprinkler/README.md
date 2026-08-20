@@ -147,11 +147,13 @@ Soil moisture dominates (50%). Rain is a mild 15% dampener: it tips borderline c
 The decision threshold per plant is set in `config.yaml`:
 
 | Plant | `base_need` | `threshold` | Behaviour |
-|---|---|---|---|---|
-| Habanero | 0.65 | 0.50 | Capsicum chinense, thirsty |
-| Naga Morich | 0.68 | 0.50 | Capsicum chinense super-hot, thirsty |
-| Carolina Reaper | 0.70 | 0.48 | Most water-sensitive, lowest threshold |
-| Rosmarino | 0.20 | 0.80 | Drought-tolerant, waters sparingly |
+|---|---|---|---|
+| Habanero | 0.52 | 0.58 | Capsicum chinense, thirsty |
+| Naga Morich | 0.544 | 0.58 | Capsicum chinense super-hot, thirsty |
+| Carolina Reaper | 0.56 | 0.58 | Capsicum chinense, water-sensitive |
+| Rosmarino | 0.20 | 0.60 | Drought-tolerant, waters sparingly |
+
+Thresholds sit **between** `P(need | moist)` (≤ 0.55) and `P(need | dry)` (≥ 0.77), so the BN waters only once the soil actually reaches the "dry" state and never while still "moist" — this prevents over-watering. Previously the chili thresholds (0.48–0.50) fell inside the moist band and triggered waterings several times a day on damp soil.
 
 ## Usage
 

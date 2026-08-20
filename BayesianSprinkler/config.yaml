@@ -40,7 +40,10 @@ plants:
     esp_target: HABANERO
     sensor_index: 1
     base_need: 0.52
-    threshold: 0.5
+    # P(moist) ≤ 0.54 and P(dry) ≥ 0.84, so 0.58 makes the plant water
+    # whenever it is "dry" and never while "moist" (overwatering bug fixed
+    # 2026-08-20: the old 0.5 fell inside the moist band and watered ~3×/day).
+    threshold: 0.58
     target_soil_moisture: 75.0
     # Rectangular pot 37×12×11 cm = 4 884 cm³ of soil.
     # Available water ≈ 15 % of soil volume → pot_capacity_ml = 730.
@@ -54,7 +57,10 @@ plants:
     esp_target: NAGA_MORICH
     sensor_index: 2
     base_need: 0.544
-    threshold: 0.5
+    # P(moist) ≤ 0.54 and P(dry) ≥ 0.84, so 0.58 separates dry from moist
+    # (fix 2026-08-20, same overwatering issue as habanero: old 0.5 watered
+    # the plant while soil was still moist).
+    threshold: 0.58
     target_soil_moisture: 75.0
     # Rectangular pot 45×12×11 cm = 5 940 cm³ of soil.
     # Available water ≈ 15 % → pot_capacity_ml = 890.
@@ -67,7 +73,12 @@ plants:
     esp_target: CAROLINA_REAPER
     sensor_index: 3
     base_need: 0.56
-    threshold: 0.48
+    # P(moist) ≤ 0.55 and P(dry) ≥ 0.85, so 0.58 makes the plant water only
+    # when "dry" and never while "moist". The old 0.48 sat inside the moist
+    # band and triggered watering 23× in 5 days (soil stayed 63–65 %), which
+    # over-watered the pot until water pooled in the saucer (bug found from
+    # logs_1787232299736.csv on 2026-08-20).
+    threshold: 0.58
     target_soil_moisture: 75.0
     # Round pot Ø22 cm × h12 cm → r=11 cm → π·r²·h ≈ 4 561 cm³ of soil.
     # Available water ≈ 15 % → pot_capacity_ml = 680.
