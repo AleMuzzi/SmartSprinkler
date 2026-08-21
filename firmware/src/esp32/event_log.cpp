@@ -28,6 +28,15 @@ void EventLog::begin() {
     if (!FFat.exists(LOG_DIR)) {
         FFat.mkdir(LOG_DIR);
     }
+    // FAT+FFat occasionally fails to create the first file inside a freshly
+    // ``mkdir``'d directory until the directory entry is flushed ("no permits
+    // for creation"). Touching a sentinel file forces the cache flush, and
+    // both day-file + pending.log open cleanly afterwards.
+    String probe = String(LOG_DIR) + "/.init";
+    if (!FFat.exists(probe)) {
+        File f = FFat.open(probe.c_str(), FILE_WRITE);
+        if (f) f.close();
+    }
     rotateToToday();
 }
 
@@ -176,7 +185,14 @@ void EventLog::writePending(const String& line) {
     String path = String(LOG_DIR) + "/pending.log";
     File pending = FFat.open(path.c_str(), FILE_APPEND);
     if (!pending) {
-        return;
+        // First open after a fresh FS can fail with "no permits for creation"
+        // (FFat cache). Retry with FILE_WRITE, then reopen for append.
+        File seed = FFat.open(path.c_str(), FILE_WRITE);
+        if (seed) seed.close();
+        pending = FFat.open(path.c_str(), FILE_APPEND);
+        if (!pending) {
+            return;
+        }
     }
     if (pending.size() > EVENT_LOG_PENDING_MAX_BYTES && !_pending_overflow_logged) {
         _pending_overflow_logged = true;
