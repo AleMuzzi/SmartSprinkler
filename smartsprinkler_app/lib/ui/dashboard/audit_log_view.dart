@@ -30,6 +30,7 @@ class _AuditLogViewState extends State<AuditLogView> {
   List<AuditLogEntry> _entries = [];
   String _category = '';
   String _source = 'all';
+  String _levelMin = 'info';
   bool _loading = false;
   bool _downloading = false;
   bool _deleting = false;
@@ -60,6 +61,7 @@ class _AuditLogViewState extends State<AuditLogView> {
         source: _source,
         filter: _filterController.text,
         category: _category.isEmpty ? null : _category,
+        levelMin: _levelMin,
         startDate: dateStr,
         endDate: dateStr,
       );
@@ -93,6 +95,7 @@ class _AuditLogViewState extends State<AuditLogView> {
         source: _source,
         filter: _filterController.text,
         category: _category.isEmpty ? null : _category,
+        levelMin: _levelMin,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -115,6 +118,37 @@ class _AuditLogViewState extends State<AuditLogView> {
 
   Color _colorForCategory(String category) =>
       _categoryColors[category] ?? Colors.grey.shade700;
+
+  // Mirrors the LEVEL_COLORS map in the web dashboard (AuditLog.jsx).
+  Color _levelBgColor(String level) {
+    switch (level) {
+      case 'debug':
+        return const Color(0xFFF1F5F9); // slate-100
+      case 'info':
+        return const Color(0xFFE0F2FE); // sky-100
+      case 'warn':
+        return const Color(0xFFFEF3C7); // amber-100
+      case 'error':
+        return const Color(0xFFFECACA); // red-200
+      default:
+        return Colors.grey.shade200;
+    }
+  }
+
+  Color _levelFgColor(String level) {
+    switch (level) {
+      case 'debug':
+        return Colors.grey.shade600;
+      case 'info':
+        return const Color(0xFF0369A1); // sky-700
+      case 'warn':
+        return const Color(0xFF92400E); // amber-800
+      case 'error':
+        return const Color(0xFF991B1B); // red-900
+      default:
+        return Colors.grey.shade700;
+    }
+  }
 
   String _fmtDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -305,6 +339,19 @@ class _AuditLogViewState extends State<AuditLogView> {
                   _load();
                 },
               ),
+              DropdownButton<String>(
+                value: _levelMin,
+                items: const [
+                  DropdownMenuItem(value: 'debug', child: Text('Livello: Debug')),
+                  DropdownMenuItem(value: 'info', child: Text('Livello: Info')),
+                  DropdownMenuItem(value: 'warn', child: Text('Livello: Warn')),
+                  DropdownMenuItem(value: 'error', child: Text('Livello: Error')),
+                ],
+                onChanged: (v) {
+                  setState(() => _levelMin = v ?? 'info');
+                  _load();
+                },
+              ),
               IconButton(
                 onPressed: _pickDate,
                 icon: const Icon(Icons.calendar_month, color: Color(0xFF1976D2)),
@@ -455,6 +502,24 @@ class _AuditLogViewState extends State<AuditLogView> {
                                       ),
                                     ),
                                     const SizedBox(width: 6),
+                                    if (e.level != null) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: _levelBgColor(e.level!),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          e.level!.toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: _levelFgColor(e.level!),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(

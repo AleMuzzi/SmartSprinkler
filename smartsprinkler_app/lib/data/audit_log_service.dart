@@ -45,16 +45,22 @@ class AuditLogService {
   final Settings settings = Settings();
 
   /// Fetch log entries from the combined server + ESP endpoint. ``source``
-  /// is one of ``all`` / ``server`` / ``esp``.
+  /// is one of ``all`` / ``server`` / ``esp``. ``levelMin`` is the minimum
+  /// severity to include (debug < info < warn < error); default ``info``
+  /// hides debug noise. Pass ``debug`` to see every entry.
   Future<List<AuditLogEntry>> fetchLogEntries({
     String source = 'all',
     String filter = '',
     String? category,
+    String levelMin = 'info',
     int limit = 200,
     String? startDate,
     String? endDate,
   }) async {
-    final query = <String, String>{'source': source};
+    final query = <String, String>{
+      'source': source,
+      'level_min': levelMin,
+    };
     if (filter.isNotEmpty) query['filter'] = filter;
     if (category != null && category.isNotEmpty) query['category'] = category;
     if (limit != 200) query['limit'] = limit.toString();
@@ -107,8 +113,12 @@ class AuditLogService {
     String source = 'all',
     String filter = '',
     String? category,
+    String levelMin = 'info',
   }) async {
-    final query = <String, String>{'source': source};
+    final query = <String, String>{
+      'source': source,
+      'level_min': levelMin,
+    };
     if (filter.isNotEmpty) query['filter'] = filter;
     if (category != null && category.isNotEmpty) query['category'] = category;
 

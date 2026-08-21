@@ -236,7 +236,7 @@ void setup() {
     } else {
         Serial.println("\n! WiFi not connected — restarting connection in background (reconnect handler active).");
         WiFiAddr = String(hostname) + ".local";
-        log_event("network", "warn", "wifi_connect_failed", "WiFi not connected at boot");
+        log_event("network", "error", "wifi_connect_failed", "WiFi not connected at boot");
     }
 
     water_pump.switch_off();
@@ -277,17 +277,17 @@ void loop() {
         if (nano_connected && !nano_lost_logged && millis() - last_nano_data_ms > 6000) {
             nano_lost_logged = true;
             nano_connected = false;
-            log_event("sensor", "warn", "sensor_nano_lost", "Nano sensor data lost");
+            log_event("sensor", "error", "sensor_nano_lost", "Nano sensor data lost");
         } else if (!nano_connected && !nano_lost_logged && last_nano_data_ms != 0 &&
                    millis() - last_nano_data_ms > 30000) {
             // Received data at some point but nothing for 30s.
             nano_lost_logged = true;
-            log_event("sensor", "warn", "sensor_nano_lost", "Nano sensor data lost");
+            log_event("sensor", "error", "sensor_nano_lost", "Nano sensor data lost");
         } else if (!nano_connected && !nano_lost_logged && last_nano_data_ms == 0 &&
                    millis() > 60000) {
             // Never received a single line since boot — Nano/UART unreachable.
             nano_lost_logged = true;
-            log_event("sensor", "warn", "sensor_nano_no_data", "No Nano sensor data since boot");
+            log_event("sensor", "error", "sensor_nano_no_data", "No Nano sensor data since boot");
         }
 
         Serial.printf("[%lu] T=%.1f H=%.1f SM=[%d,%d,%d,%d] WL=%s\n",
@@ -431,10 +431,10 @@ void setup_command_routes() {
                         "\",\"amount\":" + String(curr_command->get_amount()) +
                         ",\"force\":" + (curr_command->get_force() ? "true" : "false") + "}";
 
-                    log_event_details("command", "info", "command_received", "Command received", details.c_str());
+                    log_event_details("command", "debug", "command_received", "Command received", details.c_str());
 
                     if (process_command(curr_command, error_msg)) {
-                        log_event_details("command", "info", "command_accepted", "Command accepted", details.c_str());
+                        log_event_details("command", "debug", "command_accepted", "Command accepted", details.c_str());
                         sendCorsJson(req, 200, R"({"status":"ok"})");
                         return;
                     }

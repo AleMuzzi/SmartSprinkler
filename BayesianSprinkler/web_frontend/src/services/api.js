@@ -161,12 +161,15 @@ export async function deleteAuditLog({ startDate = null, endDate = null } = {}) 
 // Each entry carries a ``source`` field ('server' | 'esp') so the UI can
 // badge or filter per origin.
 
-export async function fetchLogs({ source = 'all', filter = '', category = null, limit = 200, startDate = null, endDate = null } = {}) {
+export async function fetchLogs({ source = 'all', filter = '', category = null, levelMin = 'info', limit = 200, startDate = null, endDate = null } = {}) {
   const { bayesianUrl } = getSettings()
   const params = new URLSearchParams()
   params.set('source', source)
   if (filter) params.set('filter', filter)
   if (category) params.set('category', category)
+  // ``levelMin`` is always sent so the default on the UI and the default on
+  // the server stay in sync; pass an explicit value to override.
+  params.set('level_min', levelMin)
   if (limit) params.set('limit', String(limit))
   if (startDate) params.set('start_date', startDate)
   if (endDate) params.set('end_date', endDate)
@@ -190,12 +193,13 @@ export async function deleteLogs({ source = 'all', startDate = null, endDate = n
   return res.json()
 }
 
-export async function exportLogsCsv({ source = 'all', filter = '', category = null } = {}) {
+export async function exportLogsCsv({ source = 'all', filter = '', category = null, levelMin = 'info' } = {}) {
   const { bayesianUrl } = getSettings()
   const params = new URLSearchParams()
   params.set('source', source)
   if (filter) params.set('filter', filter)
   if (category) params.set('category', category)
+  params.set('level_min', levelMin)
   const qs = params.toString()
   const url = `${bayesianUrl}/api/logs/export${qs ? '?' + qs : ''}`
   const res = await fetchWithTimeout(url)

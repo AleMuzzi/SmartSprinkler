@@ -21,6 +21,22 @@ const SOURCE_COLORS = {
   esp: 'bg-indigo-500 text-white',
 }
 
+// Log-level palette. Mirrors the rank order in
+// BayesianSprinkler/src/bayesian_sprinkler/log_levels.py.
+const LEVEL_COLORS = {
+  debug: 'bg-gray-100 text-gray-500',
+  info: 'bg-sky-100 text-sky-700',
+  warn: 'bg-amber-100 text-amber-800',
+  error: 'bg-red-200 text-red-900',
+}
+
+const LEVEL_OPTIONS = [
+  { value: 'debug', label: 'Debug' },
+  { value: 'info', label: 'Info' },
+  { value: 'warn', label: 'Warn' },
+  { value: 'error', label: 'Error' },
+]
+
 function formatTimestamp(ts) {
   try {
     const d = new Date(ts)
@@ -34,6 +50,7 @@ export function AuditLog({ initialFilter = '' }) {
   const [entries, setEntries] = useState([])
   const [filter, setFilter] = useState(initialFilter)
   const [category, setCategory] = useState('')
+  const [levelMin, setLevelMin] = useState('info')
   const [source, setSource] = useState('all')
   const [date, setDate] = useState('')
   const [loading, setLoading] = useState(false)
@@ -47,7 +64,7 @@ export function AuditLog({ initialFilter = '' }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchLogs({ source, filter, category: category || null, limit: 200, startDate: date || null, endDate: date || null })
+      const res = await fetchLogs({ source, filter, category: category || null, levelMin, limit: 200, startDate: date || null, endDate: date || null })
       setEntries(res.entries || [])
       setCount(res.count || 0)
     } catch (e) {
@@ -65,6 +82,7 @@ export function AuditLog({ initialFilter = '' }) {
         source,
         filter,
         category: category || null,
+        levelMin,
       })
       // Try to honour server-suggested filename, fallback to timestamp.
       let filename = `logs_${Date.now()}.csv`
@@ -110,7 +128,7 @@ export function AuditLog({ initialFilter = '' }) {
     load()
     const id = setInterval(load, 10000)
     return () => clearInterval(id)
-  }, [filter, category, source, date])
+  }, [filter, category, levelMin, source, date])
 
   const errorCount = entries.filter((e) => e.category === 'error').length
   const recentErrors = entries.filter((e) => e.category === 'error').slice(0, 5)
@@ -184,6 +202,16 @@ export function AuditLog({ initialFilter = '' }) {
           <option value="error">error</option>
           <option value="config">config</option>
         </select>
+        <select
+          value={levelMin}
+          onChange={(e) => setLevelMin(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+          title="Livello minimo (debug mostra tutto)"
+        >
+          {LEVEL_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
         <div className="relative flex items-center">
           <input
             type="date"
@@ -193,14 +221,14 @@ export function AuditLog({ initialFilter = '' }) {
             title="Filtra per data"
           />
         </div>
-        <button
-          onClick={() => { setFilter(''); setCategory(''); setDate(''); setSource('all') }}
-          disabled={!filter && !category && !date && source === 'all'}
-          className="text-xs px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-40 disabled:hover:bg-gray-100"
-          title="Rimuovi tutti i filtri"
-        >
-          ✕ Clear filters
-        </button>
+          <button
+            onClick={() => { setFilter(''); setCategory(''); setLevelMin('info'); setDate(''); setSource('all') }}
+            disabled={!filter && !category && !date && source === 'all' && levelMin === 'info'}
+            className="text-xs px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-40 disabled:hover:bg-gray-100"
+            title="Rimuovi tutti i filtri"
+          >
+            ✕ Clear filters
+          </button>
       </div>
 
       {errorCount > 0 && (
@@ -242,6 +270,11 @@ export function AuditLog({ initialFilter = '' }) {
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[entry.category] || 'bg-gray-100 text-gray-700'}`}>
                   {entry.category}
                 </span>
+                {entry.level && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase ${LEVEL_COLORS[entry.level] || 'bg-gray-100 text-gray-500'}`}>
+                    {entry.level}
+                  </span>
+                )}
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase ${SOURCE_COLORS[entry.source] || 'bg-gray-100 text-gray-500'}`}>
                   {entry.source || 'server'}
                 </span>

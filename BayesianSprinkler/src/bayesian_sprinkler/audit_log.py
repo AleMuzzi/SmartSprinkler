@@ -5,6 +5,7 @@ from typing import Optional
 from .database import get_connection
 from .local_time import now as now_local
 from .local_time import from_epoch
+from .log_levels import DEFAULT_LEVEL, LOG_LEVEL_RANK, normalize, rank
 
 
 def init_audit_table():
@@ -15,9 +16,18 @@ def init_audit_table():
                 timestamp TEXT NOT NULL,
                 category TEXT NOT NULL,
                 message TEXT NOT NULL,
-                details TEXT
+                details TEXT,
+                level TEXT NOT NULL DEFAULT 'info'
             )
         """)
+        # Idempotent migration for databases created before the level column
+        # was introduced. Existing rows get backfilled to 'info' by the column
+        # default. PRAGMA table_info returns ['cid','name','type','notnull',...] tuples.
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()]
+        if "level" not in cols:
+            conn.execute(
+                "ALTER TABLE audit_log ADD COLUMN level TEXT NOT NULL DEFAULT 'info'"
+            )
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
             ON audit_log(timestamp DESC)
@@ -89,7 +99,8 @@ def get_esp_events(filter_text: Optional[str] = None,
                    category: Optional[str] = None,
                    limit: int = 200,
                    start_date: Optional[str] = None,
-                   end_date: Optional[str] = None) -> list[sqlite3.Row]:
+                   end_date: Optional[str] = None,
+                   level_min: Optional[str] = None) -> list[sqlite3.Row]:
     query = (
         "SELECT id, timestamp, ts, category, event, level, fw, message, details "
         "FROM esp_events WHERE 1=1"
@@ -102,6 +113,13 @@ def get_esp_events(filter_text: Optional[str] = None,
     if category:
         query += " AND category = ?"
         params.append(category)
+    if level_min is not None:
+        # 'level' is NOT NULL DEFAULT 'info' (rank 20), so a direct integer
+        # comparison works; unknown stored levels would not match any rank.
+        min_rank = LOG_LEVEL_RANK.get(level_min, LOG_LEVEL_RANK[DEFAULT_LEVEL])
+        query += " AND (CASE level WHEN 'debug' THEN 10 WHEN 'info' THEN 20 "
+        query += "WHEN 'warn' THEN 30 WHEN 'error' THEN 40 ELSE 20 END) >= ?"
+        params.append(min_rank)
     if start_date:
         query += " AND substr(timestamp, 1, 10) >= ?"
         params.append(start_date)
@@ -157,14 +175,26 @@ def get_all_log_entries(source: str = "all",
                         category: Optional[str] = None,
                         limit: int = 200,
                         start_date: Optional[str] = None,
-                        end_date: Optional[str] = None) -> list[sqlite3.Row]:
+                        end_date: Optional[str] = None,
+                        level_min: Optional[str] = None) -> list[sqlite3.Row]:
     """Combined query over audit_log + esp_events.
 
     Each row carries a ``source`` column: ``server`` (audit_log) or ``esp``
     (esp_events), so callers can badge or filter per origin.
     ``source`` accepts ``all``, ``server`` or ``esp``.
+    ``level_min`` filters out rows below the given level (debug < info <
+    warn < error). Default ``None`` returns every level.
     """
-    def _where_clause(extra_columns: list) -> tuple[str, list]:
+    # Reusable CASE that maps the stored level string to its numeric rank.
+    # Unknown stored values (legacy NULL before migration, garbled inputs)
+    # fall back to the default level (info=20) so they don't get silently
+    # dropped or erroneously surfaced as "debug".
+    LEVEL_RANK_SQL = (
+        "(CASE level WHEN 'debug' THEN 10 WHEN 'info' THEN 20 "
+        "WHEN 'warn' THEN 30 WHEN 'error' THEN 40 ELSE 20 END)"
+    )
+
+    def _where_clause(extra_columns: list, table_alias: str = "") -> tuple[str, list]:
         query = " WHERE 1=1"
         params: list = []
         if filter_text:
@@ -175,6 +205,10 @@ def get_all_log_entries(source: str = "all",
         if category:
             query += " AND category = ?"
             params.append(category)
+        if level_min is not None:
+            min_rank = LOG_LEVEL_RANK.get(level_min, LOG_LEVEL_RANK[DEFAULT_LEVEL])
+            query += f" AND {LEVEL_RANK_SQL} >= ?"
+            params.append(min_rank)
         if start_date:
             query += " AND substr(timestamp, 1, 10) >= ?"
             params.append(start_date)
@@ -189,7 +223,9 @@ def get_all_log_entries(source: str = "all",
         where, p = _where_clause([])
         selects.append(
             "SELECT id, timestamp, category, message, details, "
-            "'server' AS source, NULL AS level, NULL AS event, NULL AS fw "
+            "'server' AS source, "
+            "level, "  # server rows now carry the real level (was NULL before)
+            "NULL AS event, NULL AS fw "
             "FROM audit_log" + where
         )
         params.extend(p)
@@ -212,12 +248,21 @@ def get_all_log_entries(source: str = "all",
         return conn.execute(query, params).fetchall()
 
 
-def log_event(category: str, message: str, details: Optional[str] = None):
+def log_event(category: str,
+              message: str,
+              details: Optional[str] = None,
+              level: Optional[str] = None):
+    """Append a row to ``audit_log``.
+
+    ``level`` is normalised against the closed set in :mod:`log_levels`; any
+    unknown value (including ``None``) becomes ``info``.
+    """
+    effective_level = normalize(level)
     with get_connection() as conn:
         conn.execute(
-            """INSERT INTO audit_log (timestamp, category, message, details)
-               VALUES (?, ?, ?, ?)""",
-            (now_local().isoformat(), category, message, details),
+            """INSERT INTO audit_log (timestamp, category, message, details, level)
+               VALUES (?, ?, ?, ?, ?)""",
+            (now_local().isoformat(), category, message, details, effective_level),
         )
         conn.commit()
 
@@ -226,7 +271,8 @@ def get_log_entries(filter_text: Optional[str] = None,
                     category: Optional[str] = None,
                     limit: int = 200,
                     start_date: Optional[str] = None,
-                    end_date: Optional[str] = None) -> list[sqlite3.Row]:
+                    end_date: Optional[str] = None,
+                    level_min: Optional[str] = None) -> list[sqlite3.Row]:
     query = "SELECT * FROM audit_log WHERE 1=1"
     params: list = []
     if filter_text:
@@ -236,6 +282,11 @@ def get_log_entries(filter_text: Optional[str] = None,
     if category:
         query += " AND category = ?"
         params.append(category)
+    if level_min is not None:
+        min_rank = LOG_LEVEL_RANK.get(level_min, LOG_LEVEL_RANK[DEFAULT_LEVEL])
+        query += " AND (CASE level WHEN 'debug' THEN 10 WHEN 'info' THEN 20 "
+        query += "WHEN 'warn' THEN 30 WHEN 'error' THEN 40 ELSE 20 END) >= ?"
+        params.append(min_rank)
     if start_date:
         query += " AND substr(timestamp, 1, 10) >= ?"
         params.append(start_date)

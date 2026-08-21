@@ -12,7 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from bayesian_sprinkler.audit_log import (
     init_audit_table,
@@ -160,11 +160,16 @@ _VALID_EVENT_CATEGORIES = {
     "watering", "water_low", "ota", "error", "alert",
 }
 
+# Closed set of valid log levels — kept in sync with log_levels.LOG_LEVELS.
+# Pydantic enforces the same regex on incoming EspEvent payloads so the ESP
+# can't inject arbitrary level strings.
+_VALID_LEVELS_PATTERN = r"^(debug|info|warn|error)$"
+
 
 class EspEvent(BaseModel):
     ts: int | None = None          # epoch seconds (UTC) as clocked by the ESP
     fw: str | None = None
-    level: str = "info"
+    level: str = Field(default="info", pattern=_VALID_LEVELS_PATTERN)
     category: str = "system"
     event: str = "unknown"
     message: str = ""
@@ -416,6 +421,7 @@ def _register_routes(app: FastAPI):
                 f"previous_level={previous_level:.0f}mL "
                 f"new_level={capacity:.0f}mL (manual override via API)"
             ),
+            level="info",
         )
         return {
             "level_ml": state._cistern_level_ml,
@@ -485,14 +491,18 @@ def _register_routes(app: FastAPI):
         source: str = "all",
         filter: str | None = None,
         category: str | None = None,
+        level_min: str = "info",
         limit: int = 200,
         start_date: str | None = None,
         end_date: str | None = None,
     ):
+        # Default level_min = "info": hides debug noise. Pass "debug" to see
+        # everything, "warn"/"error" to focus on problems.
         rows = get_all_log_entries(
             source=source,
             filter_text=filter,
             category=category,
+            level_min=level_min,
             limit=limit,
             start_date=start_date,
             end_date=end_date,
@@ -516,6 +526,7 @@ def _register_routes(app: FastAPI):
             "source": source,
             "filter": filter,
             "category": category,
+            "level_min": level_min,
         }
 
     @app.delete(
@@ -560,13 +571,15 @@ def _register_routes(app: FastAPI):
         source: str = "all",
         filter: str | None = None,
         category: str | None = None,
+        level_min: str = "info",
     ):
         from fastapi.responses import StreamingResponse
         import csv
         import io
 
         rows = get_all_log_entries(
-            source=source, filter_text=filter, category=category, limit=1_000_000
+            source=source, filter_text=filter, category=category,
+            level_min=level_min, limit=1_000_000,
         )
 
         def csv_gen():
@@ -629,10 +642,12 @@ def _register_routes(app: FastAPI):
                       details=(
                           f"filename={file.filename} old_fw={old_version} "
                           f"error={e}"
-                      ))
+                      ),
+                      level="error")
             raise HTTPException(502, f"ESP unreachable or update failed: {e}")
         log_event("ota", "Firmware update completed",
-                  details=f"filename={file.filename} old_fw={old_version}")
+                  details=f"filename={file.filename} old_fw={old_version}",
+                  level="info")
         return {"status": "ok", "filename": file.filename}
 
     @app.post(
@@ -676,7 +691,8 @@ def _register_routes(app: FastAPI):
         if status.get("water_low_alert") == "on":
             logger.warning("Water low alert — blocked watering for %s", req.plant_type)
             log_event("command", f"Manual watering blocked: {cfg['display_name']}",
-                      details=f"reason=water_low_alert")
+                      details=f"reason=water_low_alert",
+                      level="warn")
             raise HTTPException(
                 503,
                 f"Water level low — blocked. Use force=true to override."
@@ -699,7 +715,8 @@ def _register_routes(app: FastAPI):
                       f"target={cfg['esp_target']} duration={cfg['watering_duration']}s "
                       f"used={used_ml:.0f}mL "
                       f"cistern={state._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
-                  ))
+                  ),
+                  level="info")
 
         return {"status": "ok", "plant": req.plant_type}
 
@@ -725,6 +742,7 @@ def _register_routes(app: FastAPI):
             "inference",
             "Manual inference triggered",
             details=f"watered={list(watered.keys())}",
+            level="info",
         )
         return {"status": "ok", "watered": watered}
 
@@ -745,12 +763,14 @@ def _register_routes(app: FastAPI):
             _unschedule_inference(state)
             logger.info("Service paused — hourly inference stopped")
             log_event("inference", "Service paused",
-                      details="manual action via API; hourly inference stopped")
+                      details="manual action via API; hourly inference stopped",
+                      level="warn")
         else:
             _schedule_inference(state)
             logger.info("Service resumed — hourly inference rescheduled")
             log_event("inference", "Service resumed",
-                      details="manual action via API; hourly inference rescheduled")
+                      details="manual action via API; hourly inference rescheduled",
+                      level="info")
         return {"status": "ok", "paused": paused, "previous": previous}
 
     @app.post(
@@ -1274,7 +1294,7 @@ def _inference_cycle(st: AppState) -> dict[str, float] | None:
     except Exception as e:
         tb = traceback.format_exc()
         logger.exception("Inference cycle failed")
-        log_event("error", f"Inference cycle failed: {e}", details=tb)
+        log_event("error", f"Inference cycle failed: {e}", details=tb, level="error")
         return None
 
 
@@ -1374,6 +1394,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                     f"estimated_level={st._cistern_level_ml:.0f}mL, "
                     f"capacity={cistern_capacity:.0f}mL"
                 ),
+                level="warn",
             )
         elif not water_low and st._water_low_alert:
             # On → Off: cistern has been refilled. We assume it's filled to
@@ -1393,6 +1414,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                     f"previous_level={previous_level:.0f}mL, "
                     f"new_level={cistern_capacity:.0f}mL"
                 ),
+                level="info",
             )
         st._water_low_alert = water_low
 
@@ -1500,6 +1522,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                     "inference",
                     f"Watering skipped (pulse too small): {cfg['display_name']}",
                     details=f"dose={dose_ml:.1f}mL min={_MIN_DOSE_ML}mL prob={prob:.2f}",
+                    level="debug",
                 )
                 st._last_watered_doses.pop(plant_name, None)
                 continue
@@ -1541,6 +1564,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                         f"prob={prob:.2f} threshold={threshold} hour={hour_now} "
                         f"cistern={st._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
                     ),
+                    level="debug",
                 )
                 triggered_plants.append(plant_name)
             else:
@@ -1548,7 +1572,8 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                 if will_water and status.get("water_low_alert") == "on":
                     logger.info("  Skipped — water low alert active")
                     log_event("inference", f"Watering skipped (low water): {cfg['display_name']}",
-                              details=f"prob={prob:.2f} threshold={threshold}")
+                              details=f"prob={prob:.2f} threshold={threshold}",
+                              level="warn")
 
         details = (f"plants={[c['display_name'] for c in st.config['plants'].values()]}; "
                    f"soil_moisture={status['soil_moisture']}; "
@@ -1557,9 +1582,10 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                    f"hour={hour_now}; watered={triggered_plants}; "
                    f"hour_blocked={blocked_by_hour}; bn_would_water={bn_would_water}")
         log_event("inference", f"Inference cycle completed ({len(triggered_plants)} watered)",
-                  details=details)
+                  details=details,
+                  level="info")
     except Exception as e:
         tb = traceback.format_exc()
         logger.exception("Inference cycle failed")
-        log_event("error", f"Inference cycle failed: {e}", details=tb)
+        log_event("error", f"Inference cycle failed: {e}", details=tb, level="error")
     return triggered_doses
