@@ -150,3 +150,19 @@ def get_plant_telemetry(start_date: str | None = None,
     params.append(limit)
     with get_connection() as conn:
         return conn.execute(query, params).fetchall()
+
+
+def get_cistern_level(default_ml: float = 30000.0) -> float:
+    """Return the persisted cistern level in mL, or *default_ml* if none."""
+    raw = get_service_config("cistern_level_ml")
+    if raw is None:
+        return default_ml
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return default_ml
+
+
+def set_cistern_level(level_ml: float) -> None:
+    """Persist the current cistern level (single-row key-value)."""
+    set_service_config("cistern_level_ml", f"{level_ml:.1f}")

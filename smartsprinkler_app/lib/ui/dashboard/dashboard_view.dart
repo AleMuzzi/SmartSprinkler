@@ -343,9 +343,9 @@ class _PlantGrid extends StatelessWidget {
   }
 
   double _gridChildAspectRatio(double height) {
-    if (height <= 380) return 0.72;
-    if (height <= 480) return 0.78;
-    return 0.85;
+    if (height <= 380) return 0.68;
+    if (height <= 480) return 0.74;
+    return 0.76;
   }
 }
 
@@ -356,13 +356,16 @@ class _PlantCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color needColor;
-    if (plant.probabilityOfNeed >= 0.70) {
-      needColor = const Color(0xFFF44336);
-    } else if (plant.probabilityOfNeed >= 0.40) {
-      needColor = const Color(0xFFFFC107);
+    final pct = (plant.probabilityOfNeed * 100).round();
+    final needsWater = plant.probabilityOfNeed >= plant.threshold;
+
+    Color probColor;
+    if (pct >= 70) {
+      probColor = const Color(0xFFF44336);
+    } else if (pct >= 40) {
+      probColor = const Color(0xFFFFC107);
     } else {
-      needColor = const Color(0xFF4CAF50);
+      probColor = const Color(0xFF4CAF50);
     }
 
     return GestureDetector(
@@ -394,7 +397,7 @@ class _PlantCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              height: 92,
+              height: 82,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: plant.imageUrl.isNotEmpty
@@ -429,58 +432,46 @@ class _PlantCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF2D3748),
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Row(
                           children: [
+                            _SoilMoistureBadge(moisture: plant.soilMoisture),
+                            const SizedBox(width: 4),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                               decoration: BoxDecoration(
-                                color: needColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
+                                color: needsWater
+                                    ? const Color(0xFFF44336).withValues(alpha: 0.12)
+                                    : const Color(0xFF4CAF50).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '${(plant.probabilityOfNeed * 100).round()}% Need',
+                                needsWater ? 'Needs water' : 'OK',
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w600,
-                                  color: needColor,
+                                  color: needsWater
+                                      ? const Color(0xFFC62828)
+                                      : const Color(0xFF2E7D32),
                                 ),
                               ),
                             ),
-                            if (plant.isWatering) ...[
-                              const SizedBox(width: 5),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF2196F3).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.water_drop, size: 10, color: Color(0xFF1565C0)),
-                                    SizedBox(width: 3),
-                                    Text(
-                                      'Watering',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF1565C0),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
                           ],
+                        ),
+                        const SizedBox(height: 6),
+                        _CompactProbabilityBar(
+                          probability: plant.probabilityOfNeed,
+                          threshold: plant.threshold,
+                          color: probColor,
                         ),
                       ],
                     ),
+                    const SizedBox(height: 6),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -489,11 +480,12 @@ class _PlantCard extends StatelessWidget {
                           backgroundColor: const Color(0xFF4CAF50),
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          visualDensity: VisualDensity.compact,
                         ),
-                        child: const Text('Water Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        child: const Text('Water Now', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                       ),
                     ),
                   ],
@@ -505,7 +497,89 @@ class _PlantCard extends StatelessWidget {
       ),
     );
   }
+}
 
+class _SoilMoistureBadge extends StatelessWidget {
+  final double moisture;
+  const _SoilMoistureBadge({required this.moisture});
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    if (moisture <= 30) {
+      color = const Color(0xFFF44336);
+    } else if (moisture <= 60) {
+      color = const Color(0xFFFFC107);
+    } else {
+      color = const Color(0xFF4CAF50);
+    }
+    return Text(
+      '\uD83D\uDCA7 ${moisture.toInt()}%',
+      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
+    );
+  }
+}
+
+class _CompactProbabilityBar extends StatelessWidget {
+  final double probability;
+  final double threshold;
+  final Color color;
+  const _CompactProbabilityBar({
+    required this.probability,
+    required this.threshold,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (probability * 100).round();
+    final thresholdPct = (threshold * 100).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Prob.', style: TextStyle(fontSize: 9, color: Color(0xFF718096))),
+            Text('$pct%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Stack(
+          children: [
+            Container(
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8EDF2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            FractionallySizedBox(
+              widthFactor: (probability).clamp(0.0, 1.0),
+              child: Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              '| threshold $thresholdPct%',
+              style: const TextStyle(fontSize: 8, color: Color(0xFFA0AEC0)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _WeatherFooter extends StatelessWidget {
@@ -517,7 +591,7 @@ class _WeatherFooter extends StatelessWidget {
     final w = vm.weather;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.white,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -572,29 +646,30 @@ class _WeatherTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 18, color: const Color(0xFF718096)),
+            Icon(icon, size: 14, color: const Color(0xFF718096)),
             if (sourceIsWeb) ...[
-              const SizedBox(width: 4),
+              const SizedBox(width: 3),
               Tooltip(
                 message: 'Dato dal web (sensore locale non disponibile)',
                 child: Icon(
                   Icons.public,
-                  size: 12,
+                  size: 10,
                   color: const Color(0xFF718096),
                 ),
               ),
             ],
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Text(
           value,
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: Color(0xFF2D3748),
           ),
@@ -602,7 +677,7 @@ class _WeatherTile extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 11,
+            fontSize: 10,
             color: Color(0xFF718096),
           ),
         ),

@@ -33,6 +33,8 @@ from bayesian_sprinkler.database import (
     get_service_config,
     set_service_config,
     get_all_service_config,
+    get_cistern_level,
+    set_cistern_level,
 )
 from bayesian_sprinkler.local_time import configure as configure_timezone
 from bayesian_sprinkler.local_time import now as now_local
@@ -264,9 +266,10 @@ def create_app(config: dict) -> FastAPI:
         longitude=config["weather"]["longitude"],
         cloud_threshold=config["weather"]["cloud_cover_threshold"],
     )
-    # Cistern starts full. The state survives across inference cycles; the
-    # simulation engine keeps its own copy.
-    state._cistern_level_ml = float(config.get("cistern_capacity_ml", 30000))
+    # Restore persisted cistern level (falls back to configured capacity on
+    # first run or if the DB row is missing).
+    cistern_capacity = float(config.get("cistern_capacity_ml", 30000))
+    state._cistern_level_ml = get_cistern_level(default_ml=cistern_capacity)
     app = FastAPI(lifespan=lifespan, title="BayesianSprinkler")
     app.add_middleware(
         CORSMiddleware,
@@ -409,6 +412,7 @@ def _register_routes(app: FastAPI):
         capacity = float(state.config.get("cistern_capacity_ml", 30000))
         previous_level = float(state._cistern_level_ml)
         state._cistern_level_ml = capacity
+        set_cistern_level(capacity)
         # Also clear the alert since the cistern is now full.
         state._water_low_alert = False
         logger.info(
@@ -710,6 +714,7 @@ def _register_routes(app: FastAPI):
         cistern_capacity = float(state.config.get("cistern_capacity_ml", 30000))
         previous_level = float(state._cistern_level_ml)
         state._cistern_level_ml = max(0.0, previous_level - used_ml)
+        set_cistern_level(state._cistern_level_ml)
         log_event("command", f"Manual watering: {cfg['display_name']}",
                   details=(
                       f"target={cfg['esp_target']} duration={cfg['watering_duration']}s "
@@ -1402,6 +1407,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
             previous_level = st._cistern_level_ml
             st._cistern_level_ml = cistern_capacity
+            set_cistern_level(cistern_capacity)
             logger.info(
                 "Water tank refilled: %.0f mL → %.0f mL",
                 previous_level, cistern_capacity,
@@ -1550,6 +1556,7 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                 # estimate conservative.
                 previous_level = st._cistern_level_ml
                 st._cistern_level_ml = max(0.0, previous_level - dose_ml)
+                set_cistern_level(st._cistern_level_ml)
                 cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
                 if st._cistern_level_ml != previous_level:
                     logger.debug(

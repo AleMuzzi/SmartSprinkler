@@ -6,6 +6,7 @@ class PlantData {
   final String imageUrl;
   final Target target;
   double probabilityOfNeed;
+  double threshold;
   double soilMoisture;
   int rotaryPosition;
   bool isWatering;
@@ -16,6 +17,7 @@ class PlantData {
     required this.imageUrl,
     required this.target,
     this.probabilityOfNeed = 0.0,
+    this.threshold = 0.5,
     this.soilMoisture = 0.0,
     this.rotaryPosition = 0,
     this.isWatering = false,
@@ -31,6 +33,7 @@ class PlantData {
         orElse: () => Target.NAGA_MORICH,
       ),
       probabilityOfNeed: (json['probability_of_need'] ?? 0.0).toDouble(),
+      threshold: (json['threshold'] ?? 0.5).toDouble(),
       soilMoisture: (json['soil_moisture'] ?? 0.0).toDouble(),
       rotaryPosition: json['rotary_position'] ?? 0,
       isWatering: json['is_watering'] ?? false,
@@ -43,6 +46,7 @@ class PlantData {
     'image_url': imageUrl,
     'esp_target': target.name,
     'probability_of_need': probabilityOfNeed,
+    'threshold': threshold,
     'soil_moisture': soilMoisture,
     'rotary_position': rotaryPosition,
     'is_watering': isWatering,
@@ -64,12 +68,14 @@ class EvidenceNode {
 class BayesianPlantStatus {
   final String plantId;
   final double probabilityOfNeed;
+  final double threshold;
   final List<EvidenceNode> evidenceNodes;
   final DateTime fetchedAt;
 
   BayesianPlantStatus({
     required this.plantId,
     required this.probabilityOfNeed,
+    this.threshold = 0.5,
     required this.evidenceNodes,
     DateTime? fetchedAt,
   }) : fetchedAt = fetchedAt ?? DateTime.now();
@@ -88,6 +94,7 @@ class BayesianPlantStatus {
     return BayesianPlantStatus(
       plantId: json['plant_id'] ?? '',
       probabilityOfNeed: (json['probability_of_need'] ?? 0.0).toDouble(),
+      threshold: (json['threshold'] ?? 0.5).toDouble(),
       evidenceNodes: evidenceList,
     );
   }

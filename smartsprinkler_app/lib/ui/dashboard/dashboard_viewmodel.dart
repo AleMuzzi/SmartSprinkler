@@ -239,6 +239,7 @@ class DashboardViewModel extends ChangeNotifier {
           );
           if (plant.id.isEmpty) continue;
           plant.probabilityOfNeed = status.probabilityOfNeed;
+          plant.threshold = status.threshold;
           sum += status.probabilityOfNeed;
           count++;
         }
