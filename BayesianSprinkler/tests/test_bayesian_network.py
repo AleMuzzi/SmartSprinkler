@@ -206,3 +206,174 @@ class TestSmartSprinklerBN:
         )
         prob_low = result.values[result.name_to_no["EvaporationRisk"]["low"]]
         assert prob_low > 0.5
+
+
+# ── Regression: replay exact bug scenario from logs_1787484899821.csv ──────
+
+PROD_PLANT_CONFIGS = {
+    "habanero": {
+        "base_need": 0.52,
+        "threshold": 0.58,
+        "watering_duration": 6,
+    },
+    "naga_morich": {
+        "base_need": 0.544,
+        "threshold": 0.58,
+        "watering_duration": 6,
+    },
+    "carolina_reaper": {
+        "base_need": 0.56,
+        "threshold": 0.58,
+        "watering_duration": 6,
+    },
+    "rosmarino": {
+        "base_need": 0.20,
+        "threshold": 0.60,
+        "watering_duration": 2,
+    },
+}
+
+
+@pytest.fixture
+def prod_bn():
+    return SmartSprinklerBN(PROD_PLANT_CONFIGS)
+
+
+class TestNightOverwateringRegression:
+    """Regression tests for the 21-22 Aug 2026 overwatering bug.
+
+    The real logs show the BN permitted watering every hour from 01:00 to
+    05:00 on 22 Aug despite soil at 24-27% ("dry") and night conditions
+    (temp from web fallback, humidity high). The root cause was
+    sm_score["dry"]=1.0 producing P(need)>=0.604 at dry+low_evap, above
+    the 0.58 threshold.
+
+    After the fix (sm_score["dry"]=0.7), dry+low_evap gives P<0.58 and
+    the BN must NOT water. Hot daytime conditions must still water.
+    """
+
+    def test_night_dry_low_evap_no_rain_skips_all_chilis(self, prod_bn):
+        """Bug scenario: 01:00 on 22 Aug — dry soil, night, no rain."""
+        for plant in ["habanero", "naga_morich", "carolina_reaper"]:
+            prob = prod_bn.query(
+                plant=plant,
+                temperature="low",
+                humidity="high",
+                cloud_cover="clear",
+                soil_moisture="dry",
+                rain_forecast="no",
+            )
+            assert prob < 0.58, (
+                f"{plant} P(need)={prob:.3f} should be < 0.58 "
+                f"at dry+low_evap+no_rain (night)"
+            )
+
+    def test_night_dry_low_evap_with_rain_skips(self, prod_bn):
+        """22 Aug 00:00 — dry soil, rain=yes (pre-midnight)."""
+        for plant in ["habanero", "naga_morich", "carolina_reaper"]:
+            prob = prod_bn.query(
+                plant=plant,
+                temperature="low",
+                humidity="high",
+                cloud_cover="clear",
+                soil_moisture="dry",
+                rain_forecast="yes",
+            )
+            assert prob < 0.58, (
+                f"{plant} P(need)={prob:.3f} should be < 0.58 "
+                f"at dry+low_evap+rain"
+            )
+
+    def test_hot_day_dry_still_waters(self, prod_bn):
+        """Sanity: hot dry summer day must still trigger irrigation."""
+        for plant in ["habanero", "naga_morich", "carolina_reaper"]:
+            prob = prod_bn.query(
+                plant=plant,
+                temperature="high",
+                humidity="low",
+                cloud_cover="clear",
+                soil_moisture="dry",
+                rain_forecast="no",
+            )
+            assert prob >= 0.58, (
+                f"{plant} P(need)={prob:.3f} should be >= 0.58 "
+                f"at dry+high_evap+no_rain (hot day)"
+            )
+
+    def test_warm_dry_day_still_waters(self, prod_bn):
+        """Warm afternoon with dry soil must still water."""
+        for plant in ["habanero", "naga_morich", "carolina_reaper"]:
+            prob = prod_bn.query(
+                plant=plant,
+                temperature="medium",
+                humidity="medium",
+                cloud_cover="clear",
+                soil_moisture="dry",
+                rain_forecast="no",
+            )
+            assert prob >= 0.58, (
+                f"{plant} P(need)={prob:.3f} should be >= 0.58 "
+                f"at dry+med_evap+no_rain (warm day)"
+            )
+
+    def test_moist_soil_never_waters(self, prod_bn):
+        """Moist soil must never trigger watering regardless of conditions."""
+        for plant in PROD_PLANT_CONFIGS:
+            for temp in ["low", "medium", "high"]:
+                for hum in ["low", "medium", "high"]:
+                    for rf in ["yes", "no"]:
+                        prob = prod_bn.query(
+                            plant=plant,
+                            temperature=temp,
+                            humidity=hum,
+                            cloud_cover="clear",
+                            soil_moisture="moist",
+                            rain_forecast=rf,
+                        )
+                        assert prob < 0.58, (
+                            f"{plant} moist+{temp}+{hum}+rain={rf}: "
+                            f"P={prob:.3f} must be < 0.58"
+                        )
+
+    def test_wet_soil_never_waters(self, prod_bn):
+        """Wet soil must never trigger watering."""
+        for plant in PROD_PLANT_CONFIGS:
+            for temp in ["low", "medium", "high"]:
+                for hum in ["low", "medium", "high"]:
+                    for rf in ["yes", "no"]:
+                        prob = prod_bn.query(
+                            plant=plant,
+                            temperature=temp,
+                            humidity=hum,
+                            cloud_cover="clear",
+                            soil_moisture="wet",
+                            rain_forecast=rf,
+                        )
+                        assert prob < 0.58, (
+                            f"{plant} wet+{temp}+{hum}+rain={rf}: "
+                            f"P={prob:.3f} must be < 0.58"
+                        )
+
+    def test_rain_suppression_works_for_all_chilis(self, prod_bn):
+        """Rain forecast must reduce P(need) for all chili plants."""
+        for plant in ["habanero", "naga_morich", "carolina_reaper"]:
+            prob_no = prod_bn.query(
+                plant=plant,
+                temperature="medium",
+                humidity="medium",
+                cloud_cover="clear",
+                soil_moisture="dry",
+                rain_forecast="no",
+            )
+            prob_yes = prod_bn.query(
+                plant=plant,
+                temperature="medium",
+                humidity="medium",
+                cloud_cover="clear",
+                soil_moisture="dry",
+                rain_forecast="yes",
+            )
+            assert prob_yes < prob_no, (
+                f"{plant}: rain=yes ({prob_yes:.3f}) should be < "
+                f"rain=no ({prob_no:.3f})"
+            )

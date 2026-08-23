@@ -177,7 +177,7 @@ class SmartSprinklerBN:
     def _need_water_prob(self, evap: str, plant: str, sm: str, rf: str) -> float:
         cfg = self.plant_configs[plant]
         evap_score = {"low": 0.0, "med": 0.5, "high": 1.0}[evap]
-        sm_score = {"dry": 1.0, "moist": 0.3, "wet": 0.0}[sm]
+        sm_score = {"dry": 0.7, "moist": 0.3, "wet": 0.0}[sm]
 
         score = (
             cfg["base_need"] * 0.20
