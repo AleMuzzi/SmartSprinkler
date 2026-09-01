@@ -767,6 +767,18 @@ void tick_dispensing() {
         Serial.println("Pump switched ON (after servo settle).");
     }
 
+    if (water_pump.is_on() && water_low_alert) {
+        dispensing_specific = false;
+        dispensing_target_ml = 0;
+        pump_start_pending = false;
+        water_pump.switch_off();
+        const String details = String("{\"target\":\"") + target_to_string(active_target) + "\"}";
+        log_event_details("alert", "warn", "watering_stopped_low_water",
+                          "Pump auto-stopped: water tank low during watering", details.c_str());
+        Serial.println("EMERGENCY STOP: water tank low during active watering.");
+        return;
+    }
+
     if (dispensing_specific && water_pump.is_on()) {
         const unsigned long elapsed_ms = now - dispensing_start_ms;
         const unsigned long duration_ms = (static_cast<unsigned long>(dispensing_target_ml) * 60000UL) / FLOW_RATE_ML_PER_MIN;

@@ -183,169 +183,165 @@ export function ChartsView() {
         {error && <div className="text-red-600 text-sm mb-3">⚠️ {error}</div>}
 
         <div className="space-y-6">
-          {soilVisible && (
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <h4 className="text-sm font-semibold text-gray-600">Soil moisture (%)</h4>
-                <div className="flex flex-wrap items-center gap-3">
-                  {plants.map((p, i) => (
-                    <label key={p} className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={isVisible(`soil_${p}`)}
-                        onChange={() => toggle(`soil_${p}`)}
-                        className="accent-blue-600"
-                      />
-                      <span style={{ color: PLANT_COLORS[i % PLANT_COLORS.length] }} className="font-medium">
-                        {plantName(p)}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={continuous}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                  <Tooltip labelFormatter={formatAxisTs} />
-                  <Legend />
-                  {plants.map((p, i) => isVisible(`soil_${p}`) && (
-                    <Line
-                      key={p}
-                      type="monotone"
-                      dataKey={`soil_${p}`}
-                      name={plantName(p)}
-                      stroke={PLANT_COLORS[i % PLANT_COLORS.length]}
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {ambientVisible && (
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <h4 className="text-sm font-semibold text-gray-600">Environment</h4>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                    <input type="checkbox" checked={isVisible('temperature')} onChange={() => toggle('temperature')} className="accent-red-600" />
-                    <span className="font-medium text-red-600">Temperature</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                    <input type="checkbox" checked={isVisible('humidity')} onChange={() => toggle('humidity')} className="accent-cyan-600" />
-                    <span className="font-medium text-cyan-600">Air humidity</span>
-                  </label>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={240}>
-                <ComposedChart data={continuous}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
-                  <YAxis yAxisId="temp" tick={{ fontSize: 11 }} unit="°C" />
-                  <YAxis yAxisId="hum" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
-                  <Tooltip labelFormatter={formatAxisTs} />
-                  <Legend />
-                  {isVisible('temperature') && (
-                    <Line
-                      yAxisId="temp"
-                      type="monotone"
-                      dataKey="temperature"
-                      name="Temperature"
-                      stroke="#dc2626"
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
-                    />
-                  )}
-                  {isVisible('humidity') && (
-                    <Line
-                      yAxisId="hum"
-                      type="monotone"
-                      dataKey="humidity"
-                      name="Air humidity"
-                      stroke="#0891b2"
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
-                    />
-                  )}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {cisternVisible && (
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <h4 className="text-sm font-semibold text-gray-600">Cistern level (mL)</h4>
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                  <input type="checkbox" checked={isVisible('cistern')} onChange={() => toggle('cistern')} className="accent-indigo-600" />
-                  <span className="font-medium text-indigo-600">Show cistern</span>
+          {/* Soil moisture: header with plant toggles always visible, chart only when at least one plant enabled. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-gray-600">Soil moisture (%)</h4>
+            <div className="flex flex-wrap items-center gap-3">
+              {plants.map((p, i) => (
+                <label key={p} className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isVisible(`soil_${p}`)}
+                    onChange={() => toggle(`soil_${p}`)}
+                    className="accent-blue-600"
+                  />
+                  <span style={{ color: PLANT_COLORS[i % PLANT_COLORS.length] }} className="font-medium">
+                    {plantName(p)}
+                  </span>
                 </label>
-              </div>
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={continuous}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip labelFormatter={formatAxisTs} />
-                  {isVisible('cistern') && (
-                    <Area
-                      type="stepAfter"
-                      dataKey="cistern"
-                      name="Cistern"
-                      stroke="#4f46e5"
-                      fill="#6366f1"
-                      fillOpacity={0.15}
-                      strokeWidth={2}
-                      connectNulls={false}
-                    />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
+              ))}
             </div>
+          </div>
+          {soilVisible && (
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={continuous}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                <Tooltip labelFormatter={formatAxisTs} />
+                <Legend />
+                {plants.map((p, i) => isVisible(`soil_${p}`) && (
+                  <Line
+                    key={p}
+                    type="monotone"
+                    dataKey={`soil_${p}`}
+                    name={plantName(p)}
+                    stroke={PLANT_COLORS[i % PLANT_COLORS.length]}
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
           )}
 
-          {wateringVisible && (
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <h4 className="text-sm font-semibold text-gray-600">Waterings (mL dispensed)</h4>
-                <div className="flex flex-wrap items-center gap-3">
-                  {plants.map((p, i) => (
-                    <label key={`w_${p}`} className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                      <input type="checkbox" checked={isVisible(`w_${p}`)} onChange={() => toggle(`w_${p}`)} className="accent-green-600" />
-                      <span style={{ color: PLANT_COLORS[i % PLANT_COLORS.length] }} className="font-medium">
-                        {plantName(p)}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={waterings}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip labelFormatter={formatAxisTs} />
-                  <Legend />
-                  {plants.map((p, i) => isVisible(`w_${p}`) && (
-                    <Bar
-                      key={`w_${p}`}
-                      dataKey={`w_${p}`}
-                      name={plantName(p)}
-                      stackId="a"
-                      fill={PLANT_COLORS[i % PLANT_COLORS.length]}
-                      radius={[0, 0, 0, 0]}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Environment (temperature + humidity): toggles always visible. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-gray-600">Environment</h4>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                <input type="checkbox" checked={isVisible('temperature')} onChange={() => toggle('temperature')} className="accent-red-600" />
+                <span className="font-medium text-red-600">Temperature</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                <input type="checkbox" checked={isVisible('humidity')} onChange={() => toggle('humidity')} className="accent-cyan-600" />
+                <span className="font-medium text-cyan-600">Air humidity</span>
+              </label>
             </div>
+          </div>
+          {ambientVisible && (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={continuous}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="temp" tick={{ fontSize: 11 }} unit="°C" />
+                <YAxis yAxisId="hum" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
+                <Tooltip labelFormatter={formatAxisTs} />
+                <Legend />
+                {isVisible('temperature') && (
+                  <Line
+                    yAxisId="temp"
+                    type="monotone"
+                    dataKey="temperature"
+                    name="Temperature"
+                    stroke="#dc2626"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                )}
+                {isVisible('humidity') && (
+                  <Line
+                    yAxisId="hum"
+                    type="monotone"
+                    dataKey="humidity"
+                    name="Air humidity"
+                    stroke="#0891b2"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                )}
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* Cistern: toggle always visible. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-gray-600">Cistern level (mL)</h4>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+              <input type="checkbox" checked={isVisible('cistern')} onChange={() => toggle('cistern')} className="accent-indigo-600" />
+              <span className="font-medium text-indigo-600">Show cistern</span>
+            </label>
+          </div>
+          {cisternVisible && (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={continuous}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip labelFormatter={formatAxisTs} />
+                {isVisible('cistern') && (
+                  <Area
+                    type="stepAfter"
+                    dataKey="cistern"
+                    name="Cistern"
+                    stroke="#4f46e5"
+                    fill="#6366f1"
+                    fillOpacity={0.15}
+                    strokeWidth={2}
+                    connectNulls={false}
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* Waterings: per-plant toggles always visible. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-gray-600">Waterings (mL dispensed)</h4>
+            <div className="flex flex-wrap items-center gap-3">
+              {plants.map((p, i) => (
+                <label key={`w_${p}`} className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                  <input type="checkbox" checked={isVisible(`w_${p}`)} onChange={() => toggle(`w_${p}`)} className="accent-green-600" />
+                  <span style={{ color: PLANT_COLORS[i % PLANT_COLORS.length] }} className="font-medium">
+                    {plantName(p)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          {wateringVisible && (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={waterings}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="timestamp" tickFormatter={formatAxisTs} tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip labelFormatter={formatAxisTs} />
+                <Legend />
+                {plants.map((p, i) => isVisible(`w_${p}`) && (
+                  <Bar
+                    key={`w_${p}`}
+                    dataKey={`w_${p}`}
+                    name={plantName(p)}
+                    stackId="a"
+                    fill={PLANT_COLORS[i % PLANT_COLORS.length]}
+                    radius={[0, 0, 0, 0]}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
           )}
 
           {!loading && continuous.length === 0 && waterings.length === 0 && <EmptyNote />}
