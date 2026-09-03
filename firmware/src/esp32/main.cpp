@@ -53,9 +53,13 @@ extern "C" const char FW_IMAGE_VERSION_MARKER[];
 
 #define ROTARY_DELTA_DEG 19.0f
 #define ROTARY_START_DEG  5.0f
-#define ROTARY_POSITION_COUNT 10
+#define ROTARY_POSITION_COUNT 6
 
 #define FLOW_RATE_ML_PER_MIN 1380
+// Safety net: force the pump off if it stays on longer than this (avoids
+// a runaway pump when a START is never followed by a STOP, e.g. backend
+// crash or a lost network connection).
+#define MAX_PUMP_ON_MS (5UL * 60UL * 1000UL)
 
 #define NANO_RX_PIN 14
 #define NANO_TX_PIN 15
@@ -114,6 +118,7 @@ int dispensing_target_ml = 0;
 unsigned long dispensing_start_ms = 0;
 bool pump_start_pending = false;
 unsigned long pump_start_planned_ms = 0;
+unsigned long pump_started_ms = 0;
 
 bool calibration_in_progress = false;
 int calibration_step = 0;
@@ -758,6 +763,7 @@ void tick_dispensing() {
     if (pump_start_pending && now >= pump_start_planned_ms) {
         pump_start_pending = false;
         water_pump.switch_on();
+        pump_started_ms = now;
         if (dispensing_specific) {
             dispensing_start_ms = now;
         }
@@ -776,6 +782,18 @@ void tick_dispensing() {
         log_event_details("alert", "warn", "watering_stopped_low_water",
                           "Pump auto-stopped: water tank low during watering", details.c_str());
         Serial.println("EMERGENCY STOP: water tank low during active watering.");
+        return;
+    }
+
+    if (water_pump.is_on() && (now - pump_started_ms) >= MAX_PUMP_ON_MS) {
+        dispensing_specific = false;
+        dispensing_target_ml = 0;
+        pump_start_pending = false;
+        water_pump.switch_off();
+        const String details = String("{\"target\":\"") + target_to_string(active_target) + "\"}";
+        log_event_details("alert", "error", "watering_stopped_max_runtime",
+                          "Pump auto-stopped: max runtime (5 min) exceeded", details.c_str());
+        Serial.println("EMERGENCY STOP: pump max runtime exceeded.");
         return;
     }
 

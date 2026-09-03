@@ -166,8 +166,8 @@ class TestAPI:
                             json={"plant_type": "habanero"},
                         )
         assert response.status_code == 200
-        # watering_duration=6s at default 1380 mL/min → 138 mL consumed.
-        assert api.state._cistern_level_ml == pytest.approx(30000.0 - 138.0)
+        # Default dose = min_dose_ml (115 mL) for habanero.
+        assert api.state._cistern_level_ml == pytest.approx(30000.0 - 115.0)
 
     def test_api_requires_json_body(self, client):
         response = client.post("/api/plants/manual-water")

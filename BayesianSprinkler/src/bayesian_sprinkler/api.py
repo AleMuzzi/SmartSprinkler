@@ -111,6 +111,7 @@ def _plant_from_message(message: str, plants_cfg: dict) -> str | None:
 
 class ManualWaterRequest(BaseModel):
     plant_type: str
+    dose_ml: float | None = None
 
 
 class EvidenceNode(BaseModel):
@@ -702,26 +703,28 @@ def _register_routes(app: FastAPI):
                 f"Water level low — blocked. Use force=true to override."
             )
 
-        logger.info("Manual water triggered for %s — logging snapshot", req.plant_type)
-        state.esp.start_watering(cfg["esp_target"])
-        time.sleep(cfg["watering_duration"])
-        state.esp.stop_watering(cfg["esp_target"])
-        # Track cistern water usage exactly like the inference path does.
-        # Without this a manual watering would consume water (and possibly
-        # empty the tank) while the estimate stayed untouched at full.
+        dose_ml = req.dose_ml if req.dose_ml is not None else cfg.get("min_dose_ml", 115.0)
+        dose_ml = max(0.0, min(dose_ml, cfg.get("max_dose_ml", 670.0)))
         flow_rate = float(state.config.get("flow_rate_ml_per_min", 1380.0))
-        used_ml = cfg["watering_duration"] * flow_rate / 60.0
+        dose_seconds = dose_ml * 60.0 / flow_rate
         cistern_capacity = float(state.config.get("cistern_capacity_ml", 30000))
-        previous_level = float(state._cistern_level_ml)
-        state._cistern_level_ml = max(0.0, previous_level - used_ml)
-        set_cistern_level(state._cistern_level_ml)
+
+        logger.info("Manual water triggered for %s — %.0fmL (%.2fs)", req.plant_type, dose_ml, dose_seconds)
         log_event("command", f"Manual watering: {cfg['display_name']}",
                   details=(
-                      f"target={cfg['esp_target']} duration={cfg['watering_duration']}s "
-                      f"used={used_ml:.0f}mL "
+                      f"target={cfg['esp_target']} dose={dose_ml:.0f}mL ({dose_seconds:.2f}s) "
                       f"cistern={state._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
                   ),
                   level="info")
+        try:
+            state.esp.start_watering(cfg["esp_target"])
+            time.sleep(dose_seconds)
+        finally:
+            state.esp.stop_watering(cfg["esp_target"])
+
+        previous_level = float(state._cistern_level_ml)
+        state._cistern_level_ml = max(0.0, previous_level - dose_ml)
+        set_cistern_level(state._cistern_level_ml)
 
         return {"status": "ok", "plant": req.plant_type}
 
