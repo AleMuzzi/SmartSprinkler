@@ -222,9 +222,6 @@ def _unschedule_inference(st: AppState) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    init_audit_table()
-    init_esp_events_table()
     # 15-day on-server retention for ESP events (matches the firmware's own
     # on-device rotation).
     deleted = delete_esp_events_older_than(15)
@@ -255,6 +252,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(config: dict) -> FastAPI:
+    # Create/upgrade the DB schema before anything queries it. ``create_app``
+    # runs before the lifespan, and it already reads persisted state (cistern
+    # level), so a fresh/reinstalled server with an empty DB must have the
+    # tables present at this point.
+    init_db()
+    init_audit_table()
+    init_esp_events_table()
     state.config = config
     configure_timezone(config.get("timezone", "Europe/Rome"))
     state.bn = SmartSprinklerBN(config["plants"])
