@@ -182,6 +182,8 @@ void init_time_ntp();
 String load_server_url();
 
 void setup_command_routes();
+void register_crash_handler();
+void log_previous_crash();
 
 void setup() {
     Serial.begin(115200);
@@ -201,6 +203,11 @@ void setup() {
     init_time_ntp();
 
     event_log.begin();
+    register_crash_handler();
+
+    // Check if a crash was recorded during the previous boot.
+    log_previous_crash();
+
     String server_url = load_server_url();
     event_publisher.setServerUrl(server_url);
     Serial.print("Server URL: ");
@@ -213,7 +220,12 @@ void setup() {
     log_event_details(
         "system", "info", "boot",
         String("Smart Sprinkler firmware " + String(FW_VERSION)).c_str(),
-        (String("{\"reset_reason\":\"") + reset_reason_str() + "\"}").c_str());
+        (String("{\"reset_reason\":\"") + reset_reason_str() + "\""
+         ",\"free_heap\":" + String(esp_get_free_heap_size()) +
+         ",\"min_free_heap\":" + String(esp_get_minimum_free_heap_size()) +
+         ",\"sketch_size\":" + String(ESP.getSketchSize()) +
+         ",\"sketch_md5\":\"" + ESP.getSketchMD5() + "\""
+         "}").c_str());
 
     // Camera::init();
 
@@ -810,6 +822,76 @@ void tick_dispensing() {
             Serial.println("Auto-stop: target amount dispensed.");
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Crash diagnostics — on panic, write crash details to FFat so the next boot
+// can log them. The panic handler runs in the faulted task; keep it minimal
+// (no String alloc, no mutex, no flash wear levelling writes beyond one
+// small file).
+// ---------------------------------------------------------------------------
+#define CRASH_FILE "/logs/crash_pending.bin"
+
+struct __attribute__((packed)) CrashRecord {
+    uint32_t magic;           // 0xC0DE1234
+    uint32_t reset_reason;
+    uint32_t free_heap;
+    uint32_t min_free_heap;
+    uint32_t uptime_ms;       // millis() at crash time
+};
+
+static CrashRecord s_crash_record;
+
+static void IRAM_ATTR crash_handler() {
+    s_crash_record.magic = 0xC0DE1234;
+    s_crash_record.reset_reason = (uint32_t)esp_reset_reason();
+    s_crash_record.free_heap = esp_get_free_heap_size();
+    s_crash_record.min_free_heap = esp_get_minimum_free_heap_size();
+    s_crash_record.uptime_ms = millis();
+
+    File f = FFat.open(CRASH_FILE, FILE_WRITE);
+    if (f) {
+        f.write(reinterpret_cast<const uint8_t*>(&s_crash_record),
+                sizeof(s_crash_record));
+        f.close();
+    }
+}
+
+void register_crash_handler() {
+    esp_register_shutdown_handler(crash_handler);
+}
+
+void log_previous_crash() {
+    File f = FFat.open(CRASH_FILE, FILE_READ);
+    if (!f) return;
+    CrashRecord rec;
+    if (f.read(reinterpret_cast<uint8_t*>(&rec), sizeof(rec)) != sizeof(rec)) {
+        f.close();
+        FFat.remove(CRASH_FILE);
+        return;
+    }
+    f.close();
+    FFat.remove(CRASH_FILE);
+
+    if (rec.magic != 0xC0DE1234) return;
+
+    // Format uptime as seconds
+    float uptime_s = rec.uptime_ms / 1000.0f;
+
+    String details = String("{\"reset_reason\":\"") + reset_reason_str() + "\""
+        ",\"crash_from_previous_boot\":true"
+        ",\"uptime_at_crash_s\":" + String(uptime_s, 1) +
+        ",\"free_heap\":" + String(rec.free_heap) +
+        ",\"min_free_heap\":" + String(rec.min_free_heap) +
+        "}";
+
+    log_event_details(
+        "system", "error", "previous_crash",
+        "Crash detected from previous boot",
+        details.c_str());
+    Serial.println("=== PREVIOUS CRASH REPORT ===");
+    Serial.println(details);
+    Serial.println("=============================");
 }
 
 void load_wifi_credentials() {
