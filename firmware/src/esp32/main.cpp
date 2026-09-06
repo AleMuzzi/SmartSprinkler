@@ -249,7 +249,7 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
         WiFiAddr = WiFi.localIP().toString();
         Serial.print(format("Server Ready! Use 'http://%s' to connect\n", WiFiAddr));
-        log_event("network", "info", "wifi_connected", ("WiFi connected, IP " + WiFiAddr).c_str());
+        // Event logged by the on_wifi_connected callback below.
     } else {
         Serial.println("\n! WiFi not connected — restarting connection in background (reconnect handler active).");
         WiFiAddr = String(hostname) + ".local";
