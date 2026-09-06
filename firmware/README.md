@@ -5,6 +5,8 @@ PlatformIO project for the ESP32-CAM (main controller) and Arduino Nano (sensor 
 ## Hardware
 ![ESP32-CAM-Pinout.png](res/ESP32-CAM-Pinout.png)
 
+> **PCB**: il progetto KiCad vive in [`hardware/`](../hardware/) (`SmartSprinkler.kicad_sch` + `BOM.csv`); lo schematico è la versione autorevole delle connessioni descritte sotto.
+
 ### Pinout
 
 **ESP32-CAM (main controller)**
@@ -12,7 +14,7 @@ PlatformIO project for the ESP32-CAM (main controller) and Arduino Nano (sensor 
 | Component          | GPIO       | Notes                                      |
 |-------------------|------------|--------------------------------------------|
 | Camera (AI-Thinker) | 0, 5, 18, 19, 21, 22, 23, 25, 26, 27, 32, 34, 35, 36, 39 | ESP32-CAM fixed pinout |
-| Water pump relay   | 12         | Active HIGH                                |
+| Water pump relay   | 12         | Active LOW (IN low energizes the relay)    |
 | SG90 rotary servo  | 13         | PWM signal (50Hz, 500–2500 µs pulse width)|
 | Nano UART RX       | 14         | SoftwareSerial level-shifted 5V→3.3V       |
 | Nano UART TX       | 15         | Direct connection (3.3V → Nano RX is safe) |
@@ -26,7 +28,7 @@ PlatformIO project for the ESP32-CAM (main controller) and Arduino Nano (sensor 
 | D3       | TX        | ESP32 GPIO 14 (via 1kΩ+2kΩ voltage divider)       |
 | D4       | RX        | ESP32 GPIO 15 (direct)                            |
 | D5       | Input     | Float switch (water level) — pull-up internal      |
-| VIN      | Power in  | ESP32 5V rail                                     |
+| 5V       | Power in  | ESP32 5V rail (feed the 5V pin, not VIN, to bypass the Nano on-board LDO) |
 | GND      | Ground    | ESP32 GND (shared ground is mandatory)             |
 
 ### Wiring Diagram
@@ -51,15 +53,15 @@ graph TB
         D3["🔌 D3<br>UART TX → ESP GPIO14"]
         D4["🔌 D4<br>UART RX ← ESP GPIO15"]
         D5["🔌 D5<br>Float Switch (NC)"]
-        VIN_N["🔌 VIN<br>← ESP 5V"]
+        5V_N["🔌 5V pin<br>← ESP 5V rail"]
         GND_N["🔌 GND"]
     end
 
     subgraph Required["✅ Required Components"]
-        DHT22["🌡️ DHT22<br>Temp + Humidity<br><small>┬ VCC (1) → Nano VIN<br>├ DATA (2) → Nano D2<br>├ NC (3)<br>└ GND (4) → Nano GND</small>"]
-        PUMP_RELAY["⚡ Pump Relay Module<br>(Active HIGH)<br><small>┬ VCC (1)<br>├ IN (2) → GPIO12<br>├ GND (3)<br>└ NO/COM (pump)</small>"]
+        DHT22["🌡️ DHT22<br>Temp + Humidity<br><small>┬ VCC (1) → 5V rail (12V→5V step-down)<br>├ DATA (2) → Nano D2<br>├ NC (3)<br>└ GND (4) → Nano GND</small>"]
+        PUMP_RELAY["⚡ Pump Relay Module<br>(Active LOW)<br><small>┬ VCC (1)<br>├ IN (2) → GPIO12<br>├ GND (3)<br>└ NO/COM (pump)</small>"]
         SERVO["🔄 SG90 Servo<br>Rotary Selector<br><small>┬ VCC (1) → 5V<br>├ GND (2) → GND<br>└ PWM (3) → GPIO13</small>"]
-        FLOAT["🔔 Float Switch (NC)<br>Water Level<br><small>┬ VCC (1) → Nano VIN<br>├ GND (2) → Nano GND<br>└ SIG (3) → Nano D5</small>"]
+        FLOAT["🔔 Float Switch (NC)<br>Water Level<br><small>┬ VCC (1) → 5V rail<br>├ GND (2) → Nano GND<br>└ SIG (3) → Nano D5</small>"]
     end
 
     subgraph SoilSensors["🌱 Soil Moisture Sensors (×4)"]
@@ -75,7 +77,7 @@ graph TB
     GPIO15 ==>|"TX"| D4
     5V ==>|"5V"| PUMP_RELAY
     5V ==>|"5V"| SERVO
-    5V ==>|"5V"| VIN_N
+    5V ==>|"5V"| 5V_N
     GND ==>|"GND"| PUMP_RELAY
     GND ==>|"GND"| SERVO
     GND ==>|"GND"| GND_N
@@ -105,7 +107,7 @@ graph TB
     classDef gnd fill:#ECEFF1,stroke:#607D8B
 
     class GPIO12,GPIO13,GPIO14,GPIO15,5V,GND esp32
-    class A0,A1,A2,A3,D2,D3,D4,D5,VIN_N,GND_N nano
+    class A0,A1,A2,A3,D2,D3,D4,D5,5V_N,GND_N nano
     class DHT22,PUMP_RELAY,SERVO,FLOAT required
     class SM1,SM2,SM3,SM4 sensor
 ```
@@ -140,7 +142,7 @@ The ESP32-CAM has no free ADC1 pins (all exposed GPIOs are ADC2, which conflicts
 
 #### Serial Protocol
 
-The Nano sends one line every 500 ms:
+The Nano sends one line every 1000 ms (`delay(1000)` in `nano_sensor_reader.cpp`):
 
 ```
 S:412#380#501#290#23.5#65.2#1\n
@@ -157,11 +159,14 @@ Format: `S:soil0#soil1#soil2#soil3#temp#humidity#water_ok`
 
 #### Wiring
 
-**Power** (single USB-C to ESP32-CAM, then distributed):
+**Power** (on the PCB the 5V rail comes from the 12V→5V step-down; USB-C remains for ESP32-CAM programming):
 ```
-ESP32 5V pin → Nano VIN, HW-390 #1 VCC, #2 VCC, #3 VCC, #4 VCC, DHT22 VCC, Float Switch VCC
-ESP32 GND    → Nano GND, HW-390 #1 GND, #2 GND, #3 GND, #4 GND, DHT22 GND, Float Switch GND
+5V rail → ESP32 5V pin, Nano 5V pin (bypasses the Nano LDO), HW-390 #1..#4 VCC, Float Switch VCC, SG90 VCC (+100–470µF bulk cap)
+5V rail → DHT22 VCC              (DHT22 hangs off the independent 12V→5V step-down)
+GND      → ESP32 GND, Nano GND, HW-390 #1..#4 GND, DHT22 GND, Float Switch GND, SG90 GND (shared is mandatory)
 ```
+
+The Nano's `5V` pin is used as the input (not `VIN`) so the on-board LDO dropout (~4.3V from a 5V VIN) doesn't skew the ADC reference, and the HW-390 analog output stays ratiometric with the Nano's AREF.
 
 **Serial** (Nano D3/D4 ↔ ESP32 GPIO 14/15):
 ```
@@ -185,14 +190,14 @@ HW-390 #4 OUT → Nano A3   (Rosmarino)
 
 **DHT22** (Temperature + Humidity → Nano):
 ```
-DHT22 VCC   → Nano VIN
+DHT22 VCC   → 5V rail (independent 12V→5V step-down)
 DHT22 DATA  → Nano D2
 DHT22 GND   → Nano GND
 ```
 
 **Float Switch** (Water Level → Nano):
 ```
-Float Switch VCC → Nano VIN
+Float Switch VCC → 5V rail
 Float Switch GND → Nano GND
 Float Switch SIG → Nano D5 (internal pull-up enabled: LOW = water OK, HIGH = empty)
 ```
@@ -351,7 +356,7 @@ The Bayesian server also sends an email alert when the water level drops and log
 
 ## Flow Rate Calibration
 
-The default `FLOW_RATE_ML_PER_MIN` is 6000 (6 L/min). To calibrate:
+The default `FLOW_RATE_ML_PER_MIN` is 1380 (≈1.4 L/min). To calibrate:
 
 1. Run `DISPENSE_SPECIFIC_AMOUNT` with a known amount (e.g. 1000 ml)
 2. Measure actual dispensed water with a graduated cylinder
