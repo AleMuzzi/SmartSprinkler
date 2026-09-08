@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import time
 import traceback
@@ -276,9 +277,35 @@ def create_app(config: dict) -> FastAPI:
     cistern_capacity = float(config.get("cistern_capacity_ml", 30000))
     state._cistern_level_ml = get_cistern_level(default_ml=cistern_capacity)
     app = FastAPI(lifespan=lifespan, title="BayesianSprinkler")
+    extra_origins = [
+        o.strip()
+        for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+        if o.strip()
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            *extra_origins,
+        ],
+        # Also accept any RFC1918 private-network host so the web UI works
+        # from phones / tablets on the LAN without editing this list every
+        # time the router hands out a new IP. Public origins still need to
+        # be added to ``allow_origins`` explicitly.
+        allow_origin_regex=(
+            r"^http://("
+            r"localhost|127\.0\.0\.1"
+            r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+            r"|192\.168\.\d{1,3}\.\d{1,3}"
+            r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+            r")(:\d+)?$"
+        ),
+        # The ESP firmware is the one pushing to POST /api/esp/status; it
+        # doesn't send an Origin header so we add a wildcard for the
+        # status push endpoint specifically via the per-route allow below.
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
