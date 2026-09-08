@@ -39,6 +39,7 @@ from bayesian_sprinkler.database import (
 from bayesian_sprinkler.local_time import configure as configure_timezone
 from bayesian_sprinkler.local_time import now as now_local
 from bayesian_sprinkler.notifier import send_email_alert
+from bayesian_sprinkler.refine_weights import refine_in_place, list_refined_models, MODEL_DIR
 from bayesian_sprinkler.sensor_client import ESP32Client, WeatherClient
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,65 @@ def _unschedule_inference(st: AppState) -> None:
         pass  # APScheduler raises JobLookupError when the job is absent
 
 
+REFINE_JOB_ID = "refine_weights_cycle"
+
+
+def _refine_cycle(st: AppState) -> None:
+    """Run refinement on the live BN (called by APScheduler)."""
+    try:
+        with st.lock:
+            result = refine_in_place(st.bn)
+        if result["path"]:
+            log_event(
+                "refinement",
+                f"Auto-refinement completed: {result['filename']}",
+                details=(
+                    f"rows={result['rows']} "
+                    f"prior_strength={result['prior_strength']}"
+                ),
+                level="info",
+            )
+        else:
+            log_event("refinement", "Auto-refinement skipped: no data",
+                      level="info")
+    except Exception:
+        logger.exception("Refinement cycle failed")
+        log_event("refinement", "Refinement cycle failed",
+                  details=traceback.format_exc(), level="error")
+
+
+def _schedule_refine(st: AppState) -> None:
+    """Schedule the refinement job using the persisted cron expression."""
+    if st.scheduler is None:
+        return
+    cron_expr = get_service_config("refine_weights_schedule", "10 * * * *")
+    parts = cron_expr.split()
+    trigger = CronTrigger(
+        minute=parts[0] if len(parts) > 0 else "10",
+        hour=parts[1] if len(parts) > 1 else "*",
+        day=parts[2] if len(parts) > 2 else "*",
+        month=parts[3] if len(parts) > 3 else "*",
+        day_of_week=parts[4] if len(parts) > 4 else "*",
+    )
+    st.scheduler.add_job(
+        func=lambda: _refine_cycle(st),
+        trigger=trigger,
+        id=REFINE_JOB_ID,
+        replace_existing=True,
+    )
+    logger.info("Refinement job scheduled: %s", cron_expr)
+
+
+def _unschedule_refine(st: AppState) -> None:
+    """Remove the refinement job."""
+    if st.scheduler is None:
+        return
+    try:
+        st.scheduler.remove_job(REFINE_JOB_ID)
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 15-day on-server retention for ESP events (matches the firmware's own
@@ -240,8 +300,20 @@ async def lifespan(app: FastAPI):
     # resume recreates it on demand.
     if not state._service_paused:
         _schedule_inference(state)
+    # Schedule refinement if enabled.
+    if get_service_config("refine_weights_enabled", "0") == "1":
+        _schedule_refine(state)
     state.scheduler.start()
     _poll_weather(state)
+    # Load previously refined model if one is active.
+    active_model = get_service_config("refine_weights_active_model", "expert")
+    if active_model != "expert":
+        from pathlib import Path as _P
+        if _P(active_model).is_file():
+            state.bn.apply_refined_model(active_model)
+            logger.info("Loaded refined model: %s", active_model)
+        else:
+            logger.warning("Refined model %s not found — using expert CPTs", active_model)
     if not state._service_paused:
         _inference_cycle(state)
     logger.info("API server started — scheduler running")
@@ -753,15 +825,18 @@ def _register_routes(app: FastAPI):
         set_service_config("paused", "1" if paused else "0")
         if paused:
             _unschedule_inference(state)
-            logger.info("Service paused — hourly inference stopped")
+            _unschedule_refine(state)
+            logger.info("Service paused — hourly inference + refinement stopped")
             log_event("inference", "Service paused",
-                      details="manual action via API; hourly inference stopped",
+                      details="manual action via API; hourly inference + refinement stopped",
                       level="warn")
         else:
             _schedule_inference(state)
-            logger.info("Service resumed — hourly inference rescheduled")
+            if get_service_config("refine_weights_enabled", "0") == "1":
+                _schedule_refine(state)
+            logger.info("Service resumed — hourly inference + refinement rescheduled")
             log_event("inference", "Service resumed",
-                      details="manual action via API; hourly inference rescheduled",
+                      details="manual action via API; hourly inference + refinement rescheduled",
                       level="info")
         return {"status": "ok", "paused": paused, "previous": previous}
 
@@ -786,6 +861,138 @@ def _register_routes(app: FastAPI):
     )
     def service_resume():
         return _set_service_paused(False)
+
+    # ── Refine Weights endpoints ─────────────────────────────────
+
+    @app.get(
+        "/api/service/refine-config",
+        tags=["Service"],
+        summary="Get refine_weights configuration and available models",
+        responses={200: {"description": "Refine config"}},
+    )
+    def get_refine_config():
+        available = list_refined_models()
+        active = get_service_config("refine_weights_active_model", "expert")
+        for m in available:
+            m["active"] = (m["path"] == active)
+        return {
+            "enabled": get_service_config("refine_weights_enabled", "0") == "1",
+            "schedule": get_service_config("refine_weights_schedule", "10 * * * *"),
+            "active_model": active,
+            "available_models": available,
+        }
+
+    class RefineConfigRequest(BaseModel):
+        enabled: bool | None = None
+        schedule: str | None = None
+
+    @app.post(
+        "/api/service/refine-config",
+        tags=["Service"],
+        summary="Update refine_weights configuration (enabled, schedule)",
+        responses={200: {"description": "Config updated"}},
+    )
+    def set_refine_config(req: RefineConfigRequest):
+        if req.enabled is not None:
+            set_service_config("refine_weights_enabled", "1" if req.enabled else "0")
+        if req.schedule is not None:
+            set_service_config("refine_weights_schedule", req.schedule)
+        # Reschedule the job based on new config.
+        _unschedule_refine(state)
+        if get_service_config("refine_weights_enabled", "0") == "1":
+            _schedule_refine(state)
+        return {
+            "status": "ok",
+            "enabled": get_service_config("refine_weights_enabled", "0") == "1",
+            "schedule": get_service_config("refine_weights_schedule", "10 * * * *"),
+        }
+
+    @app.post(
+        "/api/service/refine-now",
+        tags=["Service"],
+        summary="Trigger an immediate refinement cycle",
+        responses={200: {"description": "Refinement completed"}},
+    )
+    def refine_now():
+        with state.lock:
+            result = refine_in_place(state.bn)
+        if result["path"]:
+            log_event(
+                "refinement",
+                f"Manual refinement completed: {result['filename']}",
+                details=(
+                    f"rows={result['rows']} "
+                    f"prior_strength={result['prior_strength']}"
+                ),
+                level="info",
+            )
+        else:
+            log_event("refinement", "Manual refinement skipped: no data",
+                      level="info")
+        # Refresh available models list.
+        available = list_refined_models()
+        active = get_service_config("refine_weights_active_model", "expert")
+        for m in available:
+            m["active"] = (m["path"] == active)
+        return {
+            "status": "ok",
+            "result": result,
+            "available_models": available,
+        }
+
+    class RefineApplyRequest(BaseModel):
+        model_path: str  # file path or "expert"
+
+    @app.post(
+        "/api/service/refine-apply",
+        tags=["Service"],
+        summary="Apply a specific refined model or revert to expert",
+        responses={200: {"description": "Model applied"}},
+    )
+    def refine_apply(req: RefineApplyRequest):
+        if req.model_path == "expert":
+            state.bn.reset_to_expert()
+            set_service_config("refine_weights_active_model", "expert")
+            log_event("refinement", "Reverted to expert CPTs", level="info")
+        else:
+            from pathlib import Path as _P
+            p = _P(req.model_path)
+            if not p.is_file():
+                raise HTTPException(404, f"Model not found: {req.model_path}")
+            state.bn.apply_refined_model(req.model_path)
+            set_service_config("refine_weights_active_model", req.model_path)
+            log_event("refinement",
+                      f"Applied model: {p.name}",
+                      level="info")
+        available = list_refined_models()
+        active = get_service_config("refine_weights_active_model", "expert")
+        for m in available:
+            m["active"] = (m["path"] == active)
+        return {
+            "status": "ok",
+            "active_model": active,
+            "available_models": available,
+        }
+
+    @app.delete(
+        "/api/service/refine-models/{filename}",
+        tags=["Service"],
+        summary="Delete a refined model file",
+        responses={200: {"description": "Model deleted"}},
+    )
+    def refine_delete_model(filename: str):
+        from pathlib import Path as _P
+        p = MODEL_DIR / filename
+        if not p.is_file():
+            raise HTTPException(404, f"Model not found: {filename}")
+        # Prevent deleting the active model.
+        active = get_service_config("refine_weights_active_model", "expert")
+        if str(p) == active:
+            raise HTTPException(
+                409, "Cannot delete the active model — apply another first")
+        p.unlink()
+        log_event("refinement", f"Deleted model: {filename}", level="info")
+        return {"status": "ok", "deleted": filename}
 
     @app.get(
         "/api/health",

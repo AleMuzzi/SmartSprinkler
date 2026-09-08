@@ -57,6 +57,22 @@ class SmartSprinklerBN:
         self.model = self._build()
         self.inference = VariableElimination(self.model)
 
+    def apply_refined_model(self, pickle_path: str) -> None:
+        """Load a refined model pickle and replace the NeedWater CPT."""
+        import pickle as _pickle
+        with open(pickle_path, "rb") as f:
+            refined_model = _pickle.load(f)
+        refined_cpd = refined_model.get_cpds("NeedWater")
+        self.model.get_cpds("NeedWater").values = refined_cpd.values.copy()
+        self.inference = VariableElimination(self.model)
+        logger.info("Applied refined model from %s", pickle_path)
+
+    def reset_to_expert(self) -> None:
+        """Rebuild the BN from expert CPTs, discarding any refinement."""
+        self.model = self._build()
+        self.inference = VariableElimination(self.model)
+        logger.info("Reset to expert CPTs")
+
     # ── DAG ──────────────────────────────────────────────────────────
 
     def _build(self) -> BayesianNetwork:

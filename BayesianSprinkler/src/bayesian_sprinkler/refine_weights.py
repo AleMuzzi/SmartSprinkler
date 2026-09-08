@@ -15,6 +15,7 @@ import argparse
 import logging
 import pickle
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,22 @@ logger = logging.getLogger(__name__)
 
 MODEL_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 MODEL_PATH = MODEL_DIR / "refined_model.pkl"
+
+
+def _model_path_timestamped() -> Path:
+    """Return a path like ``data/refined_20260906_150000.pkl``."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return MODEL_DIR / f"refined_{ts}.pkl"
+
+
+def list_refined_models() -> list[dict]:
+    """Return all ``refined_*.pkl`` files in MODEL_DIR, newest first."""
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    models = sorted(MODEL_DIR.glob("refined_*.pkl"), reverse=True)
+    return [
+        {"filename": p.name, "path": str(p)}
+        for p in models
+    ]
 
 
 # ── Deterministic evaporation mapping (mirrors expert CPD mode) ─────
@@ -105,6 +122,60 @@ def _estimate_need_water_cpt(
 
 
 # ── Main ────────────────────────────────────────────────────────────
+
+def refine_in_place(
+    bn: SmartSprinklerBN,
+    db_path: str | Path = DB_PATH,
+    prior_strength: float = 50.0,
+) -> dict:
+    """Refine the live BN's NeedWater CPT in place and save a dated pickle.
+
+    Returns a dict with stats: ``{path, rows, prior_strength}``.
+    """
+    logger.info("Loading sensor history from %s", db_path)
+    conn = sqlite3.connect(str(db_path))
+    df = pd.read_sql_query("SELECT * FROM sensor_history", conn)
+    conn.close()
+
+    if df.empty:
+        logger.warning("No history data yet — nothing to refine")
+        return {"path": None, "rows": 0, "prior_strength": prior_strength}
+
+    logger.info("Loaded %d rows — assigning evaporation risk...", len(df))
+    df["evaporation_risk"] = df.apply(
+        lambda r: _evap_mode(r["air_temperature"], r["air_humidity"], r["cloud_cover"]),
+        axis=1,
+    )
+
+    yes_ratio = (df["need_water"] == "yes").mean()
+    logger.info("Label distribution: need_water=yes %.1f%% (%d / %d)",
+                yes_ratio * 100, (df["need_water"] == "yes").sum(), len(df))
+
+    logger.info("Estimating NeedWater CPT (prior_strength=%.1f)...", prior_strength)
+    _estimate_need_water_cpt(bn, df, prior_strength)
+
+    # Rebuild inference engine with updated CPTs
+    from pgmpy.inference import VariableElimination
+    bn.inference = VariableElimination(bn.model)
+
+    # Save a dated pickle
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    path = _model_path_timestamped()
+    with open(path, "wb") as f:
+        pickle.dump(bn.model, f)
+    logger.info("Refined model saved to %s", path)
+
+    cpd = bn.model.get_cpds("NeedWater")
+    logger.info("NeedWater CPT shape: %s (total states: %d)",
+                cpd.values.shape, cpd.variable_card)
+
+    return {
+        "path": str(path),
+        "filename": path.name,
+        "rows": len(df),
+        "prior_strength": prior_strength,
+    }
+
 
 def refine(plant_configs: dict, db_path: str | Path = DB_PATH,
            prior_strength: float = 50.0, output: str | None = None):

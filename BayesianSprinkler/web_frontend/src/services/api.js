@@ -258,6 +258,57 @@ export async function setServicePaused(paused) {
   return res.json()
 }
 
+export async function getRefineConfig() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/service/refine-config`)
+  if (!res.ok) throw new Error(`Refine config fetch failed: ${res.status}`)
+  return res.json()
+}
+
+export async function setRefineConfig({ enabled, schedule } = {}) {
+  const { bayesianUrl } = getSettings()
+  const body = {}
+  if (enabled !== undefined) body.enabled = enabled
+  if (schedule !== undefined) body.schedule = schedule
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/service/refine-config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`Refine config update failed: ${res.status}`)
+  return res.json()
+}
+
+export async function triggerRefineNow() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/service/refine-now`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`Refine-now failed: ${res.status}`)
+  return res.json()
+}
+
+export async function applyRefinedModel(modelPath) {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/service/refine-apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_path: modelPath }),
+  })
+  if (!res.ok) throw new Error(`Refine apply failed: ${res.status}`)
+  return res.json()
+}
+
+export async function deleteRefinedModel(filename) {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(
+    `${bayesianUrl}/api/service/refine-models/${encodeURIComponent(filename)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Refine model delete failed: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchCharts({ startDate = null, endDate = null, bucket = '1h' } = {}) {
   const { bayesianUrl } = getSettings()
   const params = new URLSearchParams()
