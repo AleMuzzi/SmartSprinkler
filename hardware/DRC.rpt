@@ -1,0 +1,175 @@
+** Drc report for SmartSprinkler.kicad_pcb **
+** Created on 2026-09-16T10:08:04 **
+** Report includes: Errors, Warnings **
+
+** Found 42 DRC violations **
+[pth_inside_courtyard]: PTH inside courtyard
+    Local override; error
+    @(77.0000 mm, 151.0000 mm): Piazzola PTH  3 [<no net>] di 
+    @(81.5000 mm, 148.0000 mm): Impronta J1
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(64.4000 mm, 159.2000 mm): Via [+12V] su F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(110.5800 mm, 116.2000 mm): Via [+12V] su F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(56.0000 mm, 114.5500 mm): Via [GND] su F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(41.0400 mm, 112.7700 mm): Via [GND] su F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(105.5000 mm, 148.2700 mm): Via [/QP_C] su F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(71.3400 mm, 123.2400 mm): Via [/PUMP_CTRL] su F.Cu - B.Cu
+[via_dangling]: Via is not connected or connected on only one layer
+    Local override; warning
+    @(52.3800 mm, 65.5000 mm): Via [unconnected-(U4-D11~-Pad14)] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(64.4000 mm, 159.2000 mm): Via [+12V] su F.Cu - B.Cu
+    @(64.4000 mm, 159.2000 mm): Piazzola PTH  1 [+12V] di U1
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(110.5800 mm, 116.2000 mm): Piazzola PTH  2 [+12V] di D3
+    @(110.5800 mm, 116.2000 mm): Via [+12V] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(56.0000 mm, 114.5500 mm): Via [GND] su F.Cu - B.Cu
+    @(56.0000 mm, 114.5500 mm): Piazzola PTH  2 [GND] di C3
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(41.0400 mm, 112.7700 mm): Piazzola PTH  3 [GND] di J2
+    @(41.0400 mm, 112.7700 mm): Via [GND] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(105.8600 mm, 79.7300 mm): Via [GND] su F.Cu - B.Cu
+    @(105.8600 mm, 79.7300 mm): Piazzola PTH  3 [GND] di Q1
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(91.6600 mm, 120.7000 mm): Via [GND] su F.Cu - B.Cu
+    @(91.6600 mm, 120.7000 mm): Piazzola PTH  12 [GND] di U3
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(85.6200 mm, 80.7400 mm): Piazzola PTH  30 [GND] di U4
+    @(85.6200 mm, 80.7400 mm): Via [GND] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(105.8600 mm, 81.0000 mm): Via [/Q1_B] su F.Cu - B.Cu
+    @(105.8600 mm, 81.0000 mm): Piazzola PTH  2 [/Q1_B] di Q1
+[hole_to_hole]: Fori troppo vicini tra loro (vincoli impostazioni scheda min 0.2500 mm; reale 0.0750 mm)
+    Rule: vincoli impostazioni scheda; warning
+    @(52.9419 mm, 114.1081 mm): Via [/+5V] su F.Cu - B.Cu
+    @(52.5000 mm, 114.5500 mm): Piazzola PTH  1 [/+5V] di C3
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(71.3400 mm, 115.6200 mm): Piazzola PTH  6 [/NANO_TX_3V3] di U3
+    @(71.3400 mm, 115.6200 mm): Via [/NANO_TX_3V3] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(105.5000 mm, 148.2700 mm): Piazzola PTH  1 [/QP_C] di Q4
+    @(105.5000 mm, 148.2700 mm): Via [/QP_C] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(71.3400 mm, 123.2400 mm): Piazzola PTH  3 [/PUMP_CTRL] di U3
+    @(71.3400 mm, 123.2400 mm): Via [/PUMP_CTRL] su F.Cu - B.Cu
+[hole_to_hole]: Fori troppo vicini tra loro (vincoli impostazioni scheda min 0.2500 mm; reale 0.0000 mm)
+    Rule: vincoli impostazioni scheda; warning
+    @(52.3800 mm, 65.5000 mm): Via [unconnected-(U4-D11~-Pad14)] su F.Cu - B.Cu
+    @(52.6000 mm, 65.5000 mm): Piazzola PTH  14 [unconnected-(U4-D11~-Pad14)] di U4
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(110.5800 mm, 116.2000 mm): Piazzola PTH  2 [+12V] di D3
+    @(110.5800 mm, 116.2000 mm): Via [+12V] su F.Cu - B.Cu
+[hole_to_hole]: Fori troppo vicini tra loro (vincoli impostazioni scheda min 0.2500 mm; reale 0.0750 mm)
+    Rule: vincoli impostazioni scheda; warning
+    @(52.9419 mm, 114.1081 mm): Via [/+5V] su F.Cu - B.Cu
+    @(52.5000 mm, 114.5500 mm): Piazzola PTH  1 [/+5V] di C3
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(56.0000 mm, 114.5500 mm): Via [GND] su F.Cu - B.Cu
+    @(56.0000 mm, 114.5500 mm): Piazzola PTH  2 [GND] di C3
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(71.3400 mm, 123.2400 mm): Piazzola PTH  3 [/PUMP_CTRL] di U3
+    @(71.3400 mm, 123.2400 mm): Via [/PUMP_CTRL] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(71.3400 mm, 115.6200 mm): Piazzola PTH  6 [/NANO_TX_3V3] di U3
+    @(71.3400 mm, 115.6200 mm): Via [/NANO_TX_3V3] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(91.6600 mm, 120.7000 mm): Via [GND] su F.Cu - B.Cu
+    @(91.6600 mm, 120.7000 mm): Piazzola PTH  12 [GND] di U3
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(64.4000 mm, 159.2000 mm): Via [+12V] su F.Cu - B.Cu
+    @(64.4000 mm, 159.2000 mm): Piazzola PTH  1 [+12V] di U1
+[hole_to_hole]: Fori troppo vicini tra loro (vincoli impostazioni scheda min 0.2500 mm; reale 0.0000 mm)
+    Rule: vincoli impostazioni scheda; warning
+    @(52.3800 mm, 65.5000 mm): Via [unconnected-(U4-D11~-Pad14)] su F.Cu - B.Cu
+    @(52.6000 mm, 65.5000 mm): Piazzola PTH  14 [unconnected-(U4-D11~-Pad14)] di U4
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(85.6200 mm, 80.7400 mm): Piazzola PTH  30 [GND] di U4
+    @(85.6200 mm, 80.7400 mm): Via [GND] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(41.0400 mm, 112.7700 mm): Piazzola PTH  3 [GND] di J2
+    @(41.0400 mm, 112.7700 mm): Via [GND] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(105.5000 mm, 148.2700 mm): Piazzola PTH  1 [/QP_C] di Q4
+    @(105.5000 mm, 148.2700 mm): Via [/QP_C] su F.Cu - B.Cu
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(105.8600 mm, 81.0000 mm): Via [/Q1_B] su F.Cu - B.Cu
+    @(105.8600 mm, 81.0000 mm): Piazzola PTH  2 [/Q1_B] di Q1
+[holes_co_located]: Drilled holes co-located
+    Local override; warning
+    @(105.8600 mm, 79.7300 mm): Via [GND] su F.Cu - B.Cu
+    @(105.8600 mm, 79.7300 mm): Piazzola PTH  3 [GND] di Q1
+[lib_footprint_mismatch]: I'impronta 'TO-92_Inline' non corrisponde alla copia nella libreria 'Package_TO_SOT_THT'
+    Local override; warning
+    @(106.0000 mm, 103.2700 mm): Impronta Q2
+[lib_footprint_mismatch]: I'impronta 'TO-92_Inline' non corrisponde alla copia nella libreria 'Package_TO_SOT_THT'
+    Local override; warning
+    @(106.0000 mm, 125.2000 mm): Impronta Q3
+[lib_footprint_mismatch]: I'impronta 'TO-92_Inline' non corrisponde alla copia nella libreria 'Package_TO_SOT_THT'
+    Local override; warning
+    @(105.5000 mm, 148.2700 mm): Impronta Q4
+[lib_footprint_mismatch]: I'impronta 'TO-92_Inline' non corrisponde alla copia nella libreria 'Package_TO_SOT_THT'
+    Local override; warning
+    @(105.8600 mm, 82.2700 mm): Impronta Q1
+[silk_overlap]: Silkscreen clearance
+    Rule: vincoli impostazioni scheda serigrafia; warning
+    @(46.1200 mm, 82.1400 mm): Segmento di U4 su F.Silkscreen
+    @(81.5000 mm, 82.0000 mm): Campo riferimento di U3
+[silk_overlap]: Silkscreen clearance
+    Rule: vincoli impostazioni scheda serigrafia; warning
+    @(55.9700 mm, 129.8700 mm): Segmento di C2 su F.Silkscreen
+    @(53.5000 mm, 130.0500 mm): Campo riferimento di C4
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(81.5000 mm, 82.0000 mm): Campo riferimento di U3
+    @(80.5400 mm, 80.7400 mm): Piazzola PTH  28 [unconnected-(U4-AREF-Pad28)] di U4
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(76.9000 mm, 161.8000 mm): Segmento di J1 su F.Silkscreen
+    @(77.0000 mm, 151.0000 mm): Piazzola PTH  3 [<no net>] di 
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - Footprint component type doesn't match footprint pads
+
+** End of Report **

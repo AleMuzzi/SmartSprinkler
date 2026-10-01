@@ -1,6 +1,6 @@
 // SmartSprinkler — Nano Sensor Reader
 // Reads 4 HW-390 soil moisture sensors + DHT22 + float switch and sends to ESP32-CAM via serial.
-// PCB build (WITH_PCB): additionally drives 3 solenoid valves on D6/D7/D8 (active LOW) as
+// PCB build (WITH_PCB): additionally drives 3 solenoid valves on D6/D7/D8 (active HIGH) as
 // commanded by the ESP32 via "V:abc\n".
 
 #include <Arduino.h>
@@ -24,7 +24,7 @@ SoftwareSerial espSerial(RX_PIN, TX_PIN);
 void valves_all_off() {
     for (int i = 0; i < 3; i++) {
         pinMode(VALVE_PINS[i], OUTPUT);
-        digitalWrite(VALVE_PINS[i], HIGH); // active LOW: HIGH = off
+        digitalWrite(VALVE_PINS[i], LOW); // active HIGH: LOW = off
         valve_state[i] = 0;
     }
 }
@@ -45,7 +45,7 @@ void handle_serial_command() {
             if (valid) {
                 for (int i = 0; i < 3; i++) {
                     valve_state[i] = (buf[i] == '1') ? 1 : 0;
-                    digitalWrite(VALVE_PINS[i], valve_state[i] ? LOW : HIGH); // active LOW
+                    digitalWrite(VALVE_PINS[i], valve_state[i] ? HIGH : LOW); // active HIGH
                 }
             }
         } else {

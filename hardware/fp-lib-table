@@ -1,0 +1,5 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "KiCad") (type "Table") (uri "/Applications/KiCad/KiCad.app/Contents/SharedSupport/template/fp-lib-table") (options "") (descr "Librerie predefinite KiCad"))
+  (lib (name "smartsprinkler") (type "KiCad") (uri "${KIPRJMOD}/lib/smartsprinkler.pretty") (options "") (descr "Custom SmartSprinkler footprints"))
+)
