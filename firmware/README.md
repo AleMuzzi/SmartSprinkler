@@ -1,6 +1,13 @@
 # SmartSprinkler — Firmware
 
-PlatformIO project for the ESP32-CAM (main controller) and Arduino Nano (sensor slave). The ESP32 controls irrigation, routes water via a rotary selector (SG90 servo), and exposes sensor readings via HTTP. The Arduino Nano reads 4 soil moisture sensors, a DHT22 temperature/humidity sensor, and a water level float switch, then streams all data to the ESP32 over a software serial link.
+PlatformIO project for the ESP32-CAM (main controller) and Arduino Nano (sensor slave). The ESP32 controls irrigation, routes water to the target plant, and exposes sensor readings via HTTP. The Arduino Nano reads 4 soil moisture sensors, a DHT22 temperature/humidity sensor, and a water level float switch, then streams all data to the ESP32 over a software serial link.
+
+Water routing is abstracted behind `PlantSprinkler` (`src/esp32/plant_sprinkler.h`). Two implementations exist, selected at build time via `build_src_filter` — never compile both:
+
+| Environment | Routing hardware | Implementation |
+|-------------|------------------|----------------|
+| `esp32`      | SG90 rotary selector + calibration | `plant_sprinkler_rotary.cpp` |
+| `esp32_pcb`  | 3 binary 12V solenoid valves via Nano (D6/D7/D8) | `plant_sprinkler_valve.cpp` |
 
 ## Hardware
 ![ESP32-CAM-Pinout.png](res/ESP32-CAM-Pinout.png)
@@ -28,6 +35,7 @@ PlatformIO project for the ESP32-CAM (main controller) and Arduino Nano (sensor 
 | D3       | TX        | ESP32 GPIO 14 (via 1kΩ+2kΩ voltage divider)       |
 | D4       | RX        | ESP32 GPIO 15 (direct)                            |
 | D5       | Input     | Float switch (water level) — pull-up internal      |
+| D6/D7/D8 | Output    | PCB only: valve drivers V_A/V_B/V_C (active LOW)  |
 | 5V       | Power in  | ESP32 5V rail (feed the 5V pin, not VIN, to bypass the Nano on-board LDO) |
 | GND      | Ground    | ESP32 GND (shared ground is mandatory)             |
 
@@ -116,11 +124,11 @@ graph TB
 - `==>` = required power + signal connection
 - Pin numbers shown in `<small>` as `┬ ├ └` tree (component top = pin 1)
 
-### Rotary Selector — Plant Mapping
+### Rotary Selector — Plant Mapping (breadboard only)
 
 The SG90 servo rotates a 3D-printed water path selector (Instructables: *Water Path Selector*) to direct water from a single input to one of 4 output ports. Each output connects to a different plant's drip line.
 
-The servo position (angle) selects the active output (based on 3D-printed Water Path Selector from Instructables). The ESP maps each plant to a position (see `plant_to_servo` in `src/esp32/main.cpp`):
+The servo position (angle) selects the active output (based on 3D-printed Water Path Selector from Instructables). The ESP maps each plant to a position (see `route_to` in `plant_sprinkler_rotary.cpp`):
 
 | Plant            | Position | Angle (start 5°, step 19°) |
 |------------------|----------|----------------------------|
@@ -130,11 +138,34 @@ The servo position (angle) selects the active output (based on 3D-printed Water 
 | Habanero        | 4        | 81°                        |
 | (unused)        | 0, 5–9   | —                          |
 
-The step angle (`ROTARY_DELTA_DEG = 19.0°`, start `ROTARY_START_DEG = 5.0°`) can be adjusted in `src/esp32/main.cpp` once the physical positioning is calibrated. After moving to a position, the servo holds that position indefinitely (no power draw after reaching target).
+The step angle (`ROTARY_DELTA_DEG = 19.0°`, start `ROTARY_START_DEG = 5.0°`) can be adjusted in `plant_sprinkler_rotary.cpp` once the physical positioning is calibrated. After moving to a position, the servo holds that position indefinitely (no power draw after reaching target).
 
-### Startup Calibration
+### Startup Calibration (breadboard only)
 
 On boot, the firmware runs a non-blocking calibration sweep: it visits each position sequentially, waits 800 ms, reads back the actual pulse width, and verifies the servo reached the target within ±100 µs tolerance. The sweep runs as a state machine in the main loop, so the HTTP API and sensor polling stay responsive during calibration (`/command` returns `400` until it finishes). If any position fails, `rotary_position` in `/status` reports `"uncalibrated"` and the system falls back to software-only position tracking. Adjust `ROTARY_DELTA_DEG` if the servo doesn't reach all positions accurately.
+
+### Binary Valve Routing (PCB only)
+
+On the PCB the SG90 selector is replaced by **3 × 12V solenoid valves in a binary-tree configuration**, giving 4 outputs. The ESP32 computes the valve state and sends it to the Nano (`plant_sprinkler_valve.cpp`), which switches the relay drivers on **D6/D7/D8 (active LOW)**.
+
+```
+                    ┌─ V_B = 0 ──► Output 1: Rosmarino
+ Ingresso ─ V_A ─────┤
+                    └─ V_B = 1 ──► Output 2: Carolina Reaper
+
+                    ┌─ V_C = 0 ──► Output 3: Naga Morich
+          (V_A=1) ──┤
+                    └─ V_C = 1 ──► Output 4: Habanero
+```
+
+| Plant            | V_A | V_B | V_C |
+|------------------|-----|-----|-----|
+| Rosmarino       | 0   | 0   | 0   |
+| Carolina Reaper | 0   | 1   | 0   |
+| Naga Morich     | 1   | 0   | 0   |
+| Habanero        | 1   | 0   | 1   |
+
+The state is pushed to the Nano as `V:abc\n` (`1` = valve open). `valve_state` in `/status` reports the last pushed state.
 
 ## Arduino Nano — Sensor Slave
 
@@ -157,6 +188,12 @@ Format: `S:soil0#soil1#soil2#soil3#temp#humidity#water_ok`
 | `humidity`  | Relative humidity % (DHT22)                   |
 | `water_ok`  | 1 = water OK, 0 = tank empty (float NC trigger)|
 
+On the **PCB build only**, the ESP32 additionally sends valve commands to the Nano:
+
+```
+V:010\n   // V_A V_B V_C — '1' = open, '0' = closed (active LOW relay drivers)
+```
+
 #### Wiring
 
 **Power** (on the PCB the 5V rail comes from the 12V→5V step-down; USB-C remains for ESP32-CAM programming):
@@ -165,6 +202,8 @@ Format: `S:soil0#soil1#soil2#soil3#temp#humidity#water_ok`
 5V rail → DHT22 VCC              (DHT22 hangs off the independent 12V→5V step-down)
 GND      → ESP32 GND, Nano GND, HW-390 #1..#4 GND, DHT22 GND, Float Switch GND, SG90 GND (shared is mandatory)
 ```
+
+On the **PCB build** the 12V rail feeds the 3 solenoid valves through relay drivers on **Nano D6/D7/D8** (V_A/V_B/V_C, active LOW); the SG90 and its connector are not present.
 
 The Nano's `5V` pin is used as the input (not `VIN`) so the on-board LDO dropout (~4.3V from a 5V VIN) doesn't skew the ADC reference, and the HW-390 analog output stays ratiometric with the Nano's AREF.
 
