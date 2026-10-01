@@ -10,7 +10,7 @@ import 'package:smartsprinkler_app/data/sprinkler.dart';
 import 'package:smartsprinkler_app/data/models/plant_data.dart';
 import 'package:smartsprinkler_app/data/models/weather_data.dart';
 import 'package:smartsprinkler_app/model/command.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:smartsprinkler_app/utils/toast.dart';
 
 class DashboardViewModel extends ChangeNotifier {
   final Settings settings = Settings();
@@ -21,6 +21,7 @@ class DashboardViewModel extends ChangeNotifier {
   Timer? _bayesianTimer;
   Timer? _cisternTimer;
   Timer? _serviceTimer;
+  Timer? _weatherTimer;
   bool _disposed = false;
   List<PlantData> _plants = [];
   List<BayesianPlantStatus> _plantStatuses = [];
@@ -42,7 +43,8 @@ class DashboardViewModel extends ChangeNotifier {
 
   DashboardViewModel() {
     _initDefaultPlants();
-    _startPolling();
+    // Defer initial fetches to next event loop to avoid blocking UI on startup
+    Future.microtask(_startPolling);
   }
 
   void _initDefaultPlants() {
@@ -85,7 +87,7 @@ class DashboardViewModel extends ChangeNotifier {
     _healthTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspHealth());
     _espTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchEspStatus());
     _bayesianTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchBayesianStatus());
-    Timer.periodic(const Duration(minutes: 2), (_) => _fetchWeatherStatus());
+    _weatherTimer = Timer.periodic(const Duration(minutes: 2), (_) => _fetchWeatherStatus());
     _cisternTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchCisternStatus());
     _serviceTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchServiceConfig());
   }
@@ -98,6 +100,7 @@ class DashboardViewModel extends ChangeNotifier {
     _bayesianTimer?.cancel();
     _cisternTimer?.cancel();
     _serviceTimer?.cancel();
+    _weatherTimer?.cancel();
     super.dispose();
   }
 
@@ -284,19 +287,13 @@ class DashboardViewModel extends ChangeNotifier {
       if (response.statusCode == 200) {
         _servicePaused = paused;
         _notify();
-        await Fluttertoast.showToast(
-          msg: paused ? 'Servizio in pausa' : 'Servizio riattivato',
-          fontSize: 14,
-        );
+        showAppToast(paused ? 'Servizio in pausa' : 'Servizio riattivato');
       } else {
-        await Fluttertoast.showToast(
-          msg: 'Errore ${response.statusCode} su ${paused ? 'pause' : 'resume'}',
-          fontSize: 14,
-        );
+        showAppToast('Errore ${response.statusCode} su ${paused ? 'pause' : 'resume'}');
       }
     } catch (e) {
       log('Service ${paused ? 'pause' : 'resume'} error: $e');
-      await Fluttertoast.showToast(msg: 'Bayesian unreachable', fontSize: 14);
+      showAppToast('Bayesian unreachable');
     }
   }
 
@@ -352,10 +349,7 @@ class DashboardViewModel extends ChangeNotifier {
     final success = await _waterViaBayesian(plant);
     if (!success && _bayesianStatus == ConnectivityStatus.disconnected) {
       await _waterDirect(plant);
-      await Fluttertoast.showToast(
-        msg: 'Bayesian offline — watered ${plant.displayName} directly via ESP',
-        fontSize: 14,
-      );
+      showAppToast('Bayesian offline — watered ${plant.displayName} directly via ESP');
     }
   }
 
@@ -369,12 +363,12 @@ class DashboardViewModel extends ChangeNotifier {
       if (response.statusCode == 200) {
         plant.isWatering = true;
         _notify();
-        await Fluttertoast.showToast(msg: 'OK: ${plant.displayName} watering started', fontSize: 16);
+        showAppToast('OK: ${plant.displayName} watering started', fontSize: 16);
       } else {
-        await Fluttertoast.showToast(msg: 'ESP error: ${response.statusCode}', fontSize: 16);
+        showAppToast('ESP error: ${response.statusCode}', fontSize: 16);
       }
     } catch (e) {
-      await Fluttertoast.showToast(msg: 'ESP unreachable', fontSize: 16);
+      showAppToast('ESP unreachable', fontSize: 16);
     }
   }
 
@@ -390,10 +384,10 @@ class DashboardViewModel extends ChangeNotifier {
       if (response.statusCode == 200) {
         plant.isWatering = true;
         _notify();
-        await Fluttertoast.showToast(msg: 'OK: ${plant.displayName} watered via Bayesian', fontSize: 16);
+        showAppToast('OK: ${plant.displayName} watered via Bayesian', fontSize: 16);
         return true;
       } else {
-        await Fluttertoast.showToast(msg: 'Bayesian error: ${response.statusCode}', fontSize: 16);
+        showAppToast('Bayesian error: ${response.statusCode}', fontSize: 16);
         return false;
       }
     } catch (e) {
@@ -424,12 +418,12 @@ class DashboardViewModel extends ChangeNotifier {
       if (response.statusCode == 200) {
         plant.isWatering = true;
         _notify();
-        await Fluttertoast.showToast(msg: 'Dispensing ${amountMl}ml for ${plant.displayName}', fontSize: 14);
+        showAppToast('Dispensing ${amountMl}ml for ${plant.displayName}', fontSize: 14);
       } else {
-        await Fluttertoast.showToast(msg: 'ESP error: ${response.statusCode}', fontSize: 14);
+        showAppToast('ESP error: ${response.statusCode}', fontSize: 14);
       }
     } catch (e) {
-      await Fluttertoast.showToast(msg: 'ESP unreachable', fontSize: 14);
+      showAppToast('ESP unreachable', fontSize: 14);
     }
   }
 
@@ -440,8 +434,8 @@ class DashboardViewModel extends ChangeNotifier {
           .timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final watered = (jsonDecode(response.body)['watered'] as Map<String, dynamic>).keys;
-        await Fluttertoast.showToast(
-          msg: watered.isEmpty
+        showAppToast(
+          watered.isEmpty
               ? 'Inferenza eseguita — nessuna pianta da annaffiare'
               : 'Inferenza eseguita — annaffiate: ${watered.join(', ')}',
           fontSize: 14,
@@ -449,10 +443,10 @@ class DashboardViewModel extends ChangeNotifier {
         await _fetchBayesianStatus();
         await _fetchEspStatus();
       } else {
-        await Fluttertoast.showToast(msg: 'Inferenza fallita: ${response.statusCode}', fontSize: 14);
+        showAppToast('Inferenza fallita: ${response.statusCode}', fontSize: 14);
       }
     } catch (e) {
-      await Fluttertoast.showToast(msg: 'Bayesian unreachable', fontSize: 14);
+      showAppToast('Bayesian unreachable', fontSize: 14);
     }
   }
 

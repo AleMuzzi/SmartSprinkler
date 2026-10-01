@@ -7,7 +7,7 @@ import 'package:smartsprinkler_app/model/command.dart';
 import 'package:smartsprinkler_app/data/sprinkler.dart';
 
 import '../../data/settings.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:smartsprinkler_app/utils/toast.dart';
 
 
 class HomePageViewModel {
@@ -23,7 +23,7 @@ class HomePageViewModel {
     );
 
     if (response.statusCode == 200) {
-      await Fluttertoast.showToast(msg: "✅ Command executed!", fontSize: 16.0);
+      showAppToast("✅ Command executed!");
     } else {
       try {
         Map<String, dynamic> body = {};
@@ -31,16 +31,14 @@ class HomePageViewModel {
         final msg = body["message"] ?? "unknown error";
         if (msg.toString().contains("blocked")) {
           Sprinkler().blockedAmountMl = 0;
-          await Fluttertoast.showToast(
-            msg: "⛔ Water blocked — tap alert for details",
-            fontSize: 16.0,
-            toastLength: Toast.LENGTH_LONG,
+          showAppToast(
+            "⛔ Water blocked — tap alert for details",
           );
         } else {
-          await Fluttertoast.showToast(msg: "Error ${response.statusCode}: $msg", fontSize: 16.0, toastLength: Toast.LENGTH_LONG);
+          showAppToast("Error ${response.statusCode}: $msg");
         }
       } catch (e) {
-        await Fluttertoast.showToast(msg: "Error ${response.statusCode}: ${response.body}", fontSize: 16.0, toastLength: Toast.LENGTH_LONG);
+        showAppToast("Error ${response.statusCode}: ${response.body}");
       }
     }
   }
@@ -69,13 +67,13 @@ class HomePageViewModel {
         body: payload,
       ).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
-        await Fluttertoast.showToast(msg: "✅ Watered via Bayesian server!", fontSize: 16.0);
+        showAppToast("✅ Watered via Bayesian server!");
       } else {
-        await Fluttertoast.showToast(msg: "Bayesian error ${response.statusCode}", fontSize: 16.0);
+        showAppToast("Bayesian error ${response.statusCode}");
       }
     } catch (e) {
       log("Bayesian server unreachable: $e");
-      await Fluttertoast.showToast(msg: "⚠️ Bayesian server unreachable, no watering", fontSize: 16.0, toastLength: Toast.LENGTH_LONG);
+      showAppToast("⚠️ Bayesian server unreachable, no watering");
     }
   }
 }

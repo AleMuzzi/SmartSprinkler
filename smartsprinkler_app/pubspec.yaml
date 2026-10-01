@@ -31,7 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.1
-  fluttertoast: ^8.2.4
   syncfusion_flutter_gauges: ^28.2.9
   provider: ^6.1.2
   flutter_local_notifications: ^18.0.1

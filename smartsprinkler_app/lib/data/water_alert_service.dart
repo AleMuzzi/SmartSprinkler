@@ -12,35 +12,6 @@ const notificationId = 999;
 const prefsKeyWaterAlert = 'water_low_alert_last';
 const prefsKeyAppForeground = 'app_in_foreground';
 
-Future<void> _showNotification() async {
-  final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
-
-  const androidDetails = AndroidNotificationDetails(
-    notificationChannelId,
-    'Water Alert',
-    channelDescription: 'Notifications when water tank is low',
-    importance: Importance.high,
-    priority: Priority.high,
-    icon: 'ic_bg_service_small',
-  );
-  const iosDetails = DarwinNotificationDetails(
-    presentAlert: true,
-    presentBadge: true,
-    presentSound: true,
-  );
-  const details = NotificationDetails(
-    android: androidDetails,
-    iOS: iosDetails,
-  );
-
-  await notifications.show(
-    notificationId,
-    'Water Tank Low!',
-    'The water tank is running low. Please refill.',
-    details,
-  );
-}
-
 Future<void> _saveAlertState(bool alert) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setBool(prefsKeyWaterAlert, alert);
@@ -63,7 +34,8 @@ void onStart(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  Timer.periodic(const Duration(seconds: 3), (timer) async {
+  // Use a longer interval to reduce battery usage and main thread load
+  Timer.periodic(const Duration(seconds: 30), (timer) async {
     if (apiUrl.isEmpty) return;
 
     try {
@@ -81,7 +53,8 @@ void onStart(ServiceInstance service) async {
           if (alert) {
             final inForeground = await WaterAlertService.isAppForeground();
             if (!inForeground) {
-              await _showNotification();
+              // Invoke platform channel to show notification in main isolate
+              service.invoke('showNotification');
             }
           }
         }
@@ -123,6 +96,11 @@ class WaterAlertService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+
+    // Set up handler for 'showNotification' from background isolate
+    _service.on('showNotification').listen((_) {
+      _showNotificationInMain();
+    });
 
     await _service.configure(
       androidConfiguration: AndroidConfiguration(
@@ -184,5 +162,35 @@ class WaterAlertService {
   static Future<bool> isAppForeground() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(prefsKeyAppForeground) ?? false;
+  }
+
+  // Called from background isolate via platform channel
+  static Future<void> _showNotificationInMain() async {
+    final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
+
+    const androidDetails = AndroidNotificationDetails(
+      notificationChannelId,
+      'Water Alert',
+      channelDescription: 'Notifications when water tank is low',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: 'ic_bg_service_small',
+    );
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await notifications.show(
+      notificationId,
+      'Water Tank Low!',
+      'The water tank is running low. Please refill.',
+      details,
+    );
   }
 }

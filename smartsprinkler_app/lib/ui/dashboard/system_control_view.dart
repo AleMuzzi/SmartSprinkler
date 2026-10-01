@@ -153,25 +153,28 @@ class _ServiceCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              paused ? 'In pausa' : 'Attivo',
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF2D3748),
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                paused ? 'In pausa' : 'Attivo',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2D3748),
+                ),
               ),
+              subtitle: Text(
+                paused
+                    ? 'Il ciclo orario è fermo (weather e azioni manuali restano attivi)'
+                    : 'Inferenza ogni ora (al minuto 4)',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF718096)),
+              ),
+              value: !paused,
+              activeThumbColor: const Color(0xFF2196F3),
+              onChanged: (value) => vm.setServicePaused(!value),
             ),
-            subtitle: Text(
-              paused
-                  ? 'Il ciclo orario è fermo (weather e azioni manuali restano attivi)'
-                  : 'Inferenza ogni ora (al minuto 4)',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF718096)),
-            ),
-            value: !paused,
-            activeThumbColor: const Color(0xFF2196F3),
-            onChanged: (value) => vm.setServicePaused(!value),
           ),
         ],
       ),

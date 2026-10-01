@@ -6,62 +6,102 @@ import 'ui/dashboard/dashboard_viewmodel.dart';
 import 'ui/dashboard/dashboard_view.dart';
 import 'ui/dashboard/system_control_view.dart';
 import 'ui/camera/camera_view.dart';
+import 'ui/splash_screen.dart';
 import 'data/water_alert_service.dart';
 import 'data/network_monitor.dart';
 import 'data/settings.dart';
 import 'data/sprinkler.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await WaterAlertService.setAppForeground(true);
-
-  final settings = Settings();
-  await settings.load();
-
-  final sprinkler = Sprinkler();
-  await sprinkler.restoreWaterAlertState();
-
-  // Start probing the LAN so apiUrl/bayesianUrl automatically use the
-  // internal URLs when reachable and fall back to the external ones.
-  final networkMonitor = NetworkMonitor();
-  await networkMonitor.start();
-
-  final alertService = WaterAlertService();
-  await alertService.init(settings.apiUrl);
-  final hasPermission = await alertService.ensureNotificationPermission();
-  await alertService.start();
-
-  runApp(SmartSprinklerApp(
-    hasNotificationPermission: hasPermission,
-    networkMonitor: networkMonitor,
-  ));
+  runApp(const SmartSprinklerApp());
 }
 
 class SmartSprinklerApp extends StatelessWidget {
-  const SmartSprinklerApp({
-    super.key,
-    this.hasNotificationPermission = true,
-    this.networkMonitor,
-  });
-
-  final bool hasNotificationPermission;
-  final NetworkMonitor? networkMonitor;
+  const SmartSprinklerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SmartSprinkler',
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4CAF50)),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5F7FA),
       ),
-      home: MainNavigationPage(
-        hasNotificationPermission: hasNotificationPermission,
-        networkMonitor: networkMonitor,
-      ),
+      home: const _AppLoader(),
+    );
+  }
+}
+
+class _AppLoader extends StatefulWidget {
+  const _AppLoader();
+
+  @override
+  State<_AppLoader> createState() => _AppLoaderState();
+}
+
+class _AppLoaderState extends State<_AppLoader> {
+  bool _ready = false;
+  bool _hasNotificationPermission = true;
+  NetworkMonitor? _monitor;
+
+  @override
+  void initState() {
+    super.initState();
+    // Defer init until AFTER the first frame renders.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
+  }
+
+  @override
+  void dispose() {
+    _monitor?.stop();
+    super.dispose();
+  }
+
+  Future<void> _init() async {
+    final settings = Settings();
+    final monitor = _monitor = NetworkMonitor();
+
+    await _guard('settings.load', () => settings.load());
+    await _guard('restoreWaterAlertState', () => Sprinkler().restoreWaterAlertState());
+    await _guard('setAppForeground', () => WaterAlertService.setAppForeground(true));
+    await _guard('networkMonitor.start', () => monitor.start());
+
+    final alertService = WaterAlertService();
+    await _guard('alertService.init', () => alertService.init(settings.apiUrl));
+    try {
+      final granted = await alertService.ensureNotificationPermission();
+      _hasNotificationPermission = granted;
+    } catch (e) {
+      debugPrint('App init: ensureNotificationPermission failed: $e');
+    }
+    await _guard('alertService.start', () => alertService.start());
+
+    if (!mounted) return;
+    setState(() => _ready = true);
+  }
+
+  /// Runs [action], swallowing any platform/plugin failure so that a broken
+  /// dependency can never leave the app stuck on the splash screen.
+  Future<void> _guard(String step, Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (e) {
+      debugPrint('App init: $step failed: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) return const SplashScreen();
+    return MainNavigationPage(
+      hasNotificationPermission: _hasNotificationPermission,
+      networkMonitor: _monitor,
     );
   }
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'water_alert_service.dart';
 
 class Sprinkler with ChangeNotifier {
