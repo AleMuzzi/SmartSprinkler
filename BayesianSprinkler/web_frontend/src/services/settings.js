@@ -2,6 +2,10 @@ const DEFAULT_SETTINGS = {
   espUrl: 'http://192.168.1.50',
   bayesianUrl: 'http://localhost:38080',
   pollingInterval: 2000,
+  setupCompleted: false,
+  useLocation: 'indoor', // 'indoor' | 'outdoor'
+  wateringMode: 'automatic', // 'automatic' | 'notification'
+  theme: 'system', // 'system' | 'light' | 'dark'
 }
 
 export function loadSettings() {
@@ -18,7 +22,10 @@ export function loadSettings() {
 
 export function saveSettings(settings) {
   try {
-    localStorage.setItem('smartsprinkler_settings', JSON.stringify(settings))
+    // Merge over the currently stored values so partial saves (e.g. from the
+    // Settings panel) never drop unrelated fields such as `setupCompleted`.
+    const merged = { ...loadSettings(), ...settings }
+    localStorage.setItem('smartsprinkler_settings', JSON.stringify(merged))
   } catch (e) {
     console.warn('Failed to save settings:', e)
   }

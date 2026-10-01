@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { loadSettings, saveSettings } from '../services/settings.js'
 import { fetchServiceConfig, setServicePaused } from '../services/api.js'
+import { LOCATION_OPTIONS, WATERING_OPTIONS, THEME_OPTIONS } from './setupOptions.js'
 
 export function SettingsPanel({ onSave }) {
   const [espUrl, setEspUrl] = useState('')
   const [bayesianUrl, setBayesianUrl] = useState('')
   const [pollingInterval, setPollingInterval] = useState(2000)
+  const [useLocation, setUseLocation] = useState('indoor')
+  const [wateringMode, setWateringMode] = useState('automatic')
+  const [theme, setTheme] = useState('system')
   const [saved, setSaved] = useState(false)
   const [servicePaused, setServicePausedState] = useState(false)
   const [serviceLoading, setServiceLoading] = useState(false)
@@ -16,6 +20,9 @@ export function SettingsPanel({ onSave }) {
     setEspUrl(s.espUrl)
     setBayesianUrl(s.bayesianUrl)
     setPollingInterval(s.pollingInterval)
+    setUseLocation(s.useLocation)
+    setWateringMode(s.wateringMode)
+    setTheme(s.theme)
   }, [])
 
   useEffect(() => {
@@ -25,7 +32,7 @@ export function SettingsPanel({ onSave }) {
   }, [])
 
   const handleSave = () => {
-    saveSettings({ espUrl, bayesianUrl, pollingInterval })
+    saveSettings({ espUrl, bayesianUrl, pollingInterval, useLocation, wateringMode, theme })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
     onSave?.()
@@ -33,7 +40,7 @@ export function SettingsPanel({ onSave }) {
 
   const hasChanges = () => {
     const s = loadSettings()
-    return s.espUrl !== espUrl || s.bayesianUrl !== bayesianUrl || s.pollingInterval !== pollingInterval
+    return s.espUrl !== espUrl || s.bayesianUrl !== bayesianUrl || s.pollingInterval !== pollingInterval || s.useLocation !== useLocation || s.wateringMode !== wateringMode || s.theme !== theme
   }
 
   return (
@@ -77,6 +84,62 @@ export function SettingsPanel({ onSave }) {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
           <p className="text-xs text-gray-400 mt-1">Default: 2000ms (matches mobile app)</p>
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Ambiente</label>
+          <div className="flex gap-2">
+            {LOCATION_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => { setUseLocation(opt.value); setSaved(false) }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${
+                  useLocation === opt.value ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {opt.icon} {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Modalità innaffiatura</label>
+          <div className="flex gap-2">
+            {WATERING_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => { setWateringMode(opt.value); setSaved(false) }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${
+                  wateringMode === opt.value ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {opt.icon} {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            {wateringMode === 'notification'
+              ? 'In futuro: invece di innaffiare invieremo una notifica'
+              : 'L’innaffiatura parte automaticamente'}
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Tema</label>
+          <div className="flex gap-2">
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => { setTheme(opt.value); setSaved(false) }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${
+                  theme === opt.value ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {opt.icon} {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="border-t border-gray-100 pt-4">

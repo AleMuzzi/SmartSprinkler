@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { useEspData, usePlantStatuses, useCisternStatus } from './hooks/usePolling.js'
 import { TelemetryPanel } from './components/TelemetryPanel.jsx'
 import { BayesianInsights } from './components/BayesianInsights.jsx'
@@ -11,7 +11,9 @@ import { ChartsView } from './components/ChartsView.jsx'
 import { HealthBar } from './components/StatusBadge.jsx'
 import { SimulationView } from './components/SimulationView.jsx'
 import { CisternCard, CisternWidget } from './components/SimulationView.jsx'
+import { SetupModal } from './components/SetupModal.jsx'
 import { getSettings, runInference } from './services/api.js'
+import { loadSettings } from './services/settings.js'
 
 function Toast({ message, type }) {
   const bg = type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-600' : 'bg-gray-700'
@@ -25,9 +27,30 @@ function Toast({ message, type }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [toast, setToast] = useState(null)
+  const [setupCompleted, setSetupCompleted] = useState(() => loadSettings().setupCompleted)
+  const [appSettings, setAppSettings] = useState(() => loadSettings())
   const { espData, weather, espHealthy, waterLowAlert, error, loading } = useEspData()
   const { plantStatuses, refetch: refetchPlantStatuses } = usePlantStatuses()
   const { cistern, refill: refillCistern, refetch: refetchCistern, cisternError } = useCisternStatus(getSettings().bayesianUrl)
+
+  // Apply theme (light/dark/system) to the document root
+  useEffect(() => {
+    const root = document.documentElement
+    const applyTheme = () => {
+      const isDark = appSettings.theme === 'dark' ||
+        (appSettings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      root.classList.toggle('dark', isDark)
+    }
+    applyTheme()
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    media.addEventListener('change', applyTheme)
+    return () => media.removeEventListener('change', applyTheme)
+  }, [appSettings.theme])
+
+  const handleSetupComplete = useCallback(() => {
+    setSetupCompleted(true)
+    setAppSettings(loadSettings())
+  }, [])
 
   const showToast = useCallback((msg, type = 'info') => {
     setToast({ message: msg, type })
@@ -178,11 +201,18 @@ export default function App() {
 
         {activeTab === 'settings' && (
           <div className="grid md:grid-cols-2 gap-6">
-            <SettingsPanel onSave={() => showToast('Settings saved', 'success')} />
+            <SettingsPanel onSave={() => { setAppSettings(loadSettings()); showToast('Settings saved', 'success') }} />
             <FirmwareUpdatePanel onMessage={showToast} />
           </div>
         )}
       </main>
+
+      {!setupCompleted && (
+        <SetupModal
+          onComplete={handleSetupComplete}
+          onPreview={(theme) => setAppSettings((prev) => ({ ...prev, theme }))}
+        />
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
