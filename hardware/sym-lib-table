@@ -1,0 +1,10 @@
+(sym_lib_table
+  (lib (name "power") (type "KiCad") (uri "/Applications/KiCad/kicad.app/Contents/SharedSupport/symbols/power.kicad_sym") (options "") (descr "Standard power symbols"))
+  (lib (name "Device") (type "KiCad") (uri "/Applications/KiCad/kicad.app/Contents/SharedSupport/symbols/Device.kicad_sym") (options "") (descr "Standard device symbols"))
+  (lib (name "Connector") (type "KiCad") (uri "/Applications/KiCad/kicad.app/Contents/SharedSupport/symbols/Connector.kicad_sym") (options "") (descr "Connector symbols"))
+  (lib (name "Relay") (type "KiCad") (uri "/Applications/KiCad/kicad.app/Contents/SharedSupport/symbols/Relay.kicad_sym") (options "") (descr "Relay symbols"))
+  (lib (name "Regulator_Switching") (type "KiCad") (uri "/Applications/KiCad/kicad.app/Contents/SharedSupport/symbols/Regulator_Switching.kicad_sym") (options "") (descr "Switching regulators"))
+  (lib (name "Regulator_Linear") (type "KiCad") (uri "/Applications/KiCad/kicad.app/Contents/SharedSupport/symbols/Regulator_Linear.kicad_sym") (options "") (descr "Linear regulators"))
+  (lib (name "smartsprinkler") (type "KiCad") (uri "${KIPRJMOD}/lib/esp32/ESP32-CAM.kicad_sym") (options "") (descr "ESP32-CAM full board"))
+  (lib (name "nano") (type "KiCad") (uri "${KIPRJMOD}/lib/nano/Arduino_Nano.kicad_sym") (options "") (descr "Arduino Nano"))
+)

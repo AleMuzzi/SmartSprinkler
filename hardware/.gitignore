@@ -1,0 +1,14 @@
+# KiCad local history (auto-saved snapshots)
+.history/
+
+# Restore/backup copies
+_restore_backup_*/
+
+# KiCad auto-backup schematics
+*.bak
+
+# Python bytecode from the symbol generation scripts
+__pycache__/
+
+# OS
+.DS_Store

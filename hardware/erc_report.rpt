@@ -1,0 +1,776 @@
+ERC report (2026-09-08T17:43:23, Encoding UTF8)
+Report includes: Errors, Warnings
+
+***** Sheet /
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(25.40 mm, 170.18 mm): Pin 1 [???, ?]
+    @(40.64 mm, 190.50 mm): Pin 1 [???, ?]
+[unconnected_wire_endpoint]: Capo filo non connesso
+    ; warning
+    @(25.40 mm, 170.18 mm): Filo, lung. 5.68 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(40.64 mm, 190.50 mm): Pin 2 [???, ?]
+    @(45.72 mm, 231.14 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(40.64 mm, 190.50 mm): Pin 1 [???, ?]
+    @(45.72 mm, 231.14 mm): Pin 1 [???, ?]
+[multiple_net_names]: Sia +12V che GND sono collegati agli stessi elementi; nella netlist verrà usata +12V
+    ; warning
+    @(398.78 mm, 106.68 mm): Etichetta "+12V"
+    @(45.72 mm, 195.58 mm): Etichetta "GND"
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(45.72 mm, 231.14 mm): Pin 4 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(45.72 mm, 231.14 mm): Pin 1 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(45.72 mm, 231.14 mm): Pin 2 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(45.72 mm, 231.14 mm): Pin 3 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(45.72 mm, 271.78 mm): Pin 1 [???, ?]
+    @(45.72 mm, 231.14 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(45.72 mm, 271.78 mm): Pin 3 [???, ?]
+    @(45.72 mm, 231.14 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(45.72 mm, 271.78 mm): Pin 2 [???, ?]
+    @(45.72 mm, 231.14 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 508000, 2336800
+    ; warning
+    @(50.80 mm, 233.68 mm): Etichetta "+5V_RAW"
+    @(45.72 mm, 231.14 mm): Filo, lung. 7.184 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 508000, 2743200
+    ; warning
+    @(50.80 mm, 274.32 mm): Etichetta "+5V_RAW"
+    @(45.72 mm, 271.78 mm): Filo, lung. 9.158 mm
+[unconnected_wire_endpoint]: Capo filo non connesso
+    ; warning
+    @(81.28 mm, 127.00 mm): Filo, lung. 5.68 mm
+[isolated_pin_label]: Label connected to only one pin
+    ; warning
+    @(86.36 mm, 129.54 mm): Etichetta "+5V"
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 165.10 mm): Pin 2 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 165.10 mm): Pin 1 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 190.50 mm): Pin 5 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 190.50 mm): Pin 2 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 190.50 mm): Pin 3 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 190.50 mm): Pin 4 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 215.90 mm): Pin 1 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(99.06 mm, 215.90 mm): Pin 2 [???, ?]
+    @(99.06 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(101.60 mm, 271.78 mm): Pin 2 [???, ?]
+    @(157.48 mm, 271.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(101.60 mm, 271.78 mm): Pin 3 [???, ?]
+    @(157.48 mm, 271.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(101.60 mm, 271.78 mm): Pin 1 [???, ?]
+    @(157.48 mm, 271.78 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 1041400, 1930400
+    ; warning
+    @(104.14 mm, 193.04 mm): Etichetta "+12V"
+    @(99.06 mm, 190.50 mm): Filo, lung. 13.678 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1041400, 1955800
+    ; warning
+    @(104.14 mm, 195.58 mm): Etichetta "GND"
+    @(99.06 mm, 190.50 mm): Filo, lung. 13.678 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1066800, 2743200
+    ; warning
+    @(106.68 mm, 274.32 mm): Etichetta "+5V_RAW"
+    @(101.60 mm, 271.78 mm): Filo, lung. 7.184 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(119.38 mm, 248.92 mm): Pin 1 [???, ?]
+    @(101.60 mm, 271.78 mm): Pin 1 [???, ?]
+[unconnected_wire_endpoint]: Capo filo non connesso
+    ; warning
+    @(119.38 mm, 248.92 mm): Filo, lung. 5.68 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(139.70 mm, 289.56 mm): Pin 1 [???, ?]
+    @(157.48 mm, 271.78 mm): Pin 1 [???, ?]
+[unconnected_wire_endpoint]: Capo filo non connesso
+    ; warning
+    @(139.70 mm, 289.56 mm): Filo, lung. 5.68 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(149.86 mm, 165.10 mm): Pin 2 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(149.86 mm, 165.10 mm): Pin 1 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(149.86 mm, 215.90 mm): Pin 1 [???, ?]
+    @(177.80 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(149.86 mm, 215.90 mm): Pin 2 [???, ?]
+    @(177.80 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(157.48 mm, 271.78 mm): Pin 1 [???, ?]
+    @(213.36 mm, 271.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(157.48 mm, 271.78 mm): Pin 2 [???, ?]
+    @(213.36 mm, 271.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(157.48 mm, 271.78 mm): Pin 3 [???, ?]
+    @(213.36 mm, 271.78 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 1625600, 2743200
+    ; warning
+    @(162.56 mm, 274.32 mm): Etichetta "+5V_RAW"
+    @(157.48 mm, 271.78 mm): Filo, lung. 9.158 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(177.80 mm, 190.50 mm): Pin 1 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(177.80 mm, 190.50 mm): Pin 2 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[footprint_link_issues]: La configurazione corrente non include la libreria impronte 'Module'
+    ; warning
+    @(180.34 mm, 170.18 mm): Simbolo U4 [Arduino_Nano]
+[label_multiple_wires]: L'etichetta collega più di un filo a 1828800, 1930400
+    ; warning
+    @(182.88 mm, 193.04 mm): Etichetta "+5V_RAW"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1828800, 1955800
+    ; warning
+    @(182.88 mm, 195.58 mm): Etichetta "ESP_5V"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1727200
+    ; warning
+    @(185.42 mm, 172.72 mm): Etichetta "NANO_TX"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1752600
+    ; warning
+    @(185.42 mm, 175.26 mm): Etichetta "NANO_RX"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1803400
+    ; warning
+    @(185.42 mm, 180.34 mm): Etichetta "GND"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1828800
+    ; warning
+    @(185.42 mm, 182.88 mm): Etichetta "DHT_DATA"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1854200
+    ; warning
+    @(185.42 mm, 185.42 mm): Etichetta "VALVE1"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1879600
+    ; warning
+    @(185.42 mm, 187.96 mm): Etichetta "VALVE2"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1905000
+    ; warning
+    @(185.42 mm, 190.50 mm): Etichetta "VALVE3"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 1955800
+    ; warning
+    @(185.42 mm, 195.58 mm): Etichetta "+5V_RAW"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 2311400
+    ; warning
+    @(185.42 mm, 231.14 mm): Etichetta "SOIL_3"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 1854200, 2336800
+    ; warning
+    @(185.42 mm, 233.68 mm): Etichetta "SOIL_2"
+    @(180.34 mm, 170.18 mm): Filo, lung. 68.768 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(203.20 mm, 165.10 mm): Pin 1 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(203.20 mm, 165.10 mm): Pin 2 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(203.20 mm, 190.50 mm): Pin 1 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(203.20 mm, 190.50 mm): Pin 2 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(203.20 mm, 190.50 mm): Pin 3 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(203.20 mm, 215.90 mm): Pin 1 [???, ?]
+    @(203.20 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(203.20 mm, 215.90 mm): Pin 2 [???, ?]
+    @(203.20 mm, 190.50 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 2082800, 1930400
+    ; warning
+    @(208.28 mm, 193.04 mm): Etichetta "GND"
+    @(203.20 mm, 190.50 mm): Filo, lung. 7.184 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(213.36 mm, 271.78 mm): Pin 2 [???, ?]
+    @(241.30 mm, 231.14 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(213.36 mm, 271.78 mm): Pin 1 [???, ?]
+    @(241.30 mm, 231.14 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(213.36 mm, 271.78 mm): Pin 3 [???, ?]
+    @(241.30 mm, 231.14 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 2184400, 2743200
+    ; warning
+    @(218.44 mm, 274.32 mm): Etichetta "+5V_RAW"
+    @(213.36 mm, 271.78 mm): Filo, lung. 7.184 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(226.06 mm, 127.00 mm): Pin 1 [???, ?]
+    @(203.20 mm, 165.10 mm): Pin 1 [???, ?]
+[unconnected_wire_endpoint]: Capo filo non connesso
+    ; warning
+    @(226.06 mm, 127.00 mm): Filo, lung. 5.68 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(241.30 mm, 231.14 mm): Pin 1 [???, ?]
+    @(251.46 mm, 236.22 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(241.30 mm, 231.14 mm): Pin 3 [???, ?]
+    @(251.46 mm, 236.22 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(241.30 mm, 231.14 mm): Pin 2 [???, ?]
+    @(251.46 mm, 236.22 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 2463800, 2336800
+    ; warning
+    @(246.38 mm, 233.68 mm): Etichetta "+5V_RAW"
+    @(241.30 mm, 231.14 mm): Filo, lung. 7.184 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(251.46 mm, 205.74 mm): Pin 2 [???, ?]
+    @(251.46 mm, 236.22 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(251.46 mm, 205.74 mm): Pin 1 [???, ?]
+    @(251.46 mm, 236.22 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(251.46 mm, 236.22 mm): Pin 2 [???, ?]
+    @(203.20 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(251.46 mm, 236.22 mm): Pin 1 [???, ?]
+    @(203.20 mm, 190.50 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, -17.78 mm): Pin 2 [???, ?]
+    @(302.26 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, -17.78 mm): Pin 1 [???, ?]
+    @(302.26 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, 41.91 mm): Pin 2 [???, ?]
+    @(302.26 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, 41.91 mm): Pin 1 [???, ?]
+    @(302.26 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, 101.60 mm): Pin 2 [???, ?]
+    @(302.26 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, 101.60 mm): Pin 1 [???, ?]
+    @(302.26 mm, 41.91 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(302.26 mm, 161.93 mm): Filo, lung. 7.184 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(302.26 mm, 161.93 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(302.26 mm, 161.93 mm): Filo, lung. 5.68 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, 161.93 mm): Pin 2 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(302.26 mm, 161.93 mm): Pin 1 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, -17.78 mm): Pin 2 [???, ?]
+    @(302.26 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, -17.78 mm): Pin 1 [???, ?]
+    @(302.26 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, -17.78 mm): Pin 3 [???, ?]
+    @(302.26 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 41.91 mm): Pin 3 [???, ?]
+    @(302.26 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 41.91 mm): Pin 2 [???, ?]
+    @(302.26 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 41.91 mm): Pin 1 [???, ?]
+    @(302.26 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 101.60 mm): Pin 2 [???, ?]
+    @(302.26 mm, 101.60 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 101.60 mm): Pin 1 [???, ?]
+    @(302.26 mm, 101.60 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 101.60 mm): Pin 3 [???, ?]
+    @(302.26 mm, 101.60 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(332.74 mm, 161.93 mm): Filo, lung. 7.184 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(332.74 mm, 161.93 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(332.74 mm, 161.93 mm): Filo, lung. 9.158 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(332.74 mm, 161.93 mm): Filo, lung. 5.68 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 161.93 mm): Pin 1 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 161.93 mm): Pin 2 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(332.74 mm, 161.93 mm): Pin 3 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 3378200, -152400
+    ; warning
+    @(337.82 mm, -15.24 mm): Etichetta "Q3_B"
+    @(332.74 mm, -17.78 mm): Filo, lung. 7.184 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3378200, 444500
+    ; warning
+    @(337.82 mm, 44.45 mm): Etichetta "Q2_B"
+    @(332.74 mm, 41.91 mm): Filo, lung. 9.158 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3378200, 1041400
+    ; warning
+    @(337.82 mm, 104.14 mm): Etichetta "Q1_B"
+    @(332.74 mm, 101.60 mm): Filo, lung. 7.184 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3378200, 1644700
+    ; warning
+    @(337.82 mm, 164.47 mm): Etichetta "QP_B"
+    @(332.74 mm, 161.93 mm): Filo, lung. 7.184 mm
+[footprint_link_issues]: La configurazione corrente non include la libreria impronte 'smartsprinkler'
+    ; warning
+    @(350.52 mm, 170.18 mm): Simbolo U3 [ESP32-CAM]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 14 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 34 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 3 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 35 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 2 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 40 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(350.52 mm, 170.18 mm): Pin 13 [???, ?]
+    @(180.34 mm, 170.18 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 3556000, 1727200
+    ; warning
+    @(355.60 mm, 172.72 mm): Etichetta "GND"
+    @(350.52 mm, 170.18 mm): Filo, lung. 9.158 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3556000, 1752600
+    ; warning
+    @(355.60 mm, 175.26 mm): Etichetta "+3V3"
+    @(350.52 mm, 170.18 mm): Filo, lung. 9.158 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3556000, 1778000
+    ; warning
+    @(355.60 mm, 177.80 mm): Etichetta "EN"
+    @(350.52 mm, 170.18 mm): Filo, lung. 33.408 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3556000, 2032000
+    ; warning
+    @(355.60 mm, 203.20 mm): Etichetta "NANO_TX_3V3"
+    @(350.52 mm, 170.18 mm): Filo, lung. 101.727 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3556000, 2057400
+    ; warning
+    @(355.60 mm, 205.74 mm): Etichetta "PUMP_CTRL"
+    @(350.52 mm, 170.18 mm): Filo, lung. 101.727 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3556000, 2565400
+    ; warning
+    @(355.60 mm, 256.54 mm): Etichetta "PROG_RXD"
+    @(350.52 mm, 170.18 mm): Filo, lung. 101.727 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(360.68 mm, 129.54 mm): Pin 1 [???, ?]
+    @(363.22 mm, 139.70 mm): Pin 1 [???, ?]
+[unconnected_wire_endpoint]: Capo filo non connesso
+    ; warning
+    @(360.68 mm, 129.54 mm): Filo, lung. 5.68 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 20.32 mm): Pin 2 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 20.32 mm): Pin 1 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 80.01 mm): Pin 1 [???, ?]
+    @(393.70 mm, 101.60 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 80.01 mm): Pin 2 [???, ?]
+    @(393.70 mm, 101.60 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 139.70 mm): Pin 1 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 139.70 mm): Pin 2 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(363.22 mm, 200.03 mm): Filo, lung. 5.68 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(363.22 mm, 200.03 mm): Filo, lung. 7.184 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(363.22 mm, 200.03 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 200.03 mm): Pin 2 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(363.22 mm, 200.03 mm): Pin 1 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(391.16 mm, 60.96 mm): Pin 1 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[unconnected_wire_endpoint]: Capo filo non connesso
+    ; warning
+    @(391.16 mm, 60.96 mm): Filo, lung. 5.68 mm
+[footprint_link_issues]: Impronta 'Relay_SPDT_Hongfa_HF32F-G_5V' non trovata nella libreria 'Relay_THT'
+    ; warning
+    @(393.70 mm, -17.78 mm): Simbolo K3 [Relay_SPDT]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, -17.78 mm): Pin 3 [???, ?]
+    @(332.74 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, -17.78 mm): Pin 5 [???, ?]
+    @(332.74 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, -17.78 mm): Pin 4 [???, ?]
+    @(332.74 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+    @(332.74 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, -17.78 mm): Pin 2 [???, ?]
+    @(332.74 mm, -17.78 mm): Pin 1 [???, ?]
+[footprint_link_issues]: Impronta 'Relay_SPDT_Hongfa_HF32F-G_5V' non trovata nella libreria 'Relay_THT'
+    ; warning
+    @(393.70 mm, 41.91 mm): Simbolo K2 [Relay_SPDT]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 41.91 mm): Pin 3 [???, ?]
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 41.91 mm): Pin 4 [???, ?]
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 41.91 mm): Pin 2 [???, ?]
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 41.91 mm): Pin 5 [???, ?]
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+[footprint_link_issues]: Impronta 'Relay_SPDT_Hongfa_HF32F-G_5V' non trovata nella libreria 'Relay_THT'
+    ; warning
+    @(393.70 mm, 101.60 mm): Simbolo K1 [Relay_SPDT]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 101.60 mm): Pin 4 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 101.60 mm): Pin 1 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 101.60 mm): Pin 3 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 101.60 mm): Pin 2 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 101.60 mm): Pin 5 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(393.70 mm, 161.93 mm): Filo, lung. 5.68 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(393.70 mm, 161.93 mm): Filo, lung. 7.184 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(393.70 mm, 161.93 mm): Filo, lung. 9.158 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(393.70 mm, 161.93 mm): Filo, lung. 11.359 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[footprint_link_issues]: Impronta 'Relay_SPDT_Hongfa_HF32F-G_5V' non trovata nella libreria 'Relay_THT'
+    ; warning
+    @(393.70 mm, 161.93 mm): Simbolo K4 [Relay_SPDT]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 161.93 mm): Pin 2 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 161.93 mm): Pin 3 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 161.93 mm): Pin 4 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 161.93 mm): Pin 5 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+    @(350.52 mm, 170.18 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, -152400
+    ; warning
+    @(398.78 mm, -15.24 mm): Etichetta "Q3_C"
+    @(393.70 mm, -17.78 mm): Filo, lung. 7.184 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, -127000
+    ; warning
+    @(398.78 mm, -12.70 mm): Etichetta "+12V"
+    @(393.70 mm, -17.78 mm): Filo, lung. 9.158 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, 444500
+    ; warning
+    @(398.78 mm, 44.45 mm): Etichetta "Q2_C"
+    @(393.70 mm, 41.91 mm): Filo, lung. 11.359 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, 469900
+    ; warning
+    @(398.78 mm, 46.99 mm): Etichetta "+12V"
+    @(393.70 mm, 41.91 mm): Filo, lung. 11.359 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, 1041400
+    ; warning
+    @(398.78 mm, 104.14 mm): Etichetta "Q1_C"
+    @(393.70 mm, 101.60 mm): Filo, lung. 7.184 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, 1066800
+    ; warning
+    @(398.78 mm, 106.68 mm): Etichetta "+12V"
+    @(393.70 mm, 101.60 mm): Filo, lung. 9.158 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, 1644700
+    ; warning
+    @(398.78 mm, 164.47 mm): Etichetta "QP_C"
+    @(393.70 mm, 161.93 mm): Filo, lung. 11.359 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 3987800, 1670100
+    ; warning
+    @(398.78 mm, 167.01 mm): Etichetta "+12V"
+    @(393.70 mm, 161.93 mm): Filo, lung. 11.359 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(441.96 mm, 243.84 mm): Pin 4 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(441.96 mm, 243.84 mm): Pin 3 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(441.96 mm, 243.84 mm): Pin 5 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(441.96 mm, 243.84 mm): Pin 1 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(441.96 mm, 243.84 mm): Pin 6 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(441.96 mm, 243.84 mm): Pin 2 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, -17.78 mm): Pin 2 [???, ?]
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, -17.78 mm): Pin 1 [???, ?]
+    @(393.70 mm, -17.78 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, 41.91 mm): Pin 2 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, 41.91 mm): Pin 1 [???, ?]
+    @(393.70 mm, 41.91 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, 101.60 mm): Pin 1 [???, ?]
+    @(393.70 mm, 101.60 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, 101.60 mm): Pin 2 [???, ?]
+    @(393.70 mm, 101.60 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(444.50 mm, 161.93 mm): Pin 1 [???, ?]
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(444.50 mm, 161.93 mm): Filo, lung. 5.68 mm
+[endpoint_off_grid]: Symbol pin or wire end off connection grid
+    ; warning
+    @(444.50 mm, 161.93 mm): Filo, lung. 7.184 mm
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, 161.93 mm): Pin 1 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[pin_to_pin]: I pin di tipo Imprecisato e Imprecisato sono connessi
+    ; warning
+    @(444.50 mm, 161.93 mm): Pin 2 [???, ?]
+    @(393.70 mm, 161.93 mm): Pin 1 [???, ?]
+[label_multiple_wires]: L'etichetta collega più di un filo a 4470400, 2463800
+    ; warning
+    @(447.04 mm, 246.38 mm): Etichetta "+3V3"
+    @(441.96 mm, 243.84 mm): Filo, lung. 16.064 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 4470400, 2489200
+    ; warning
+    @(447.04 mm, 248.92 mm): Etichetta "GND"
+    @(441.96 mm, 243.84 mm): Filo, lung. 16.064 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 4470400, 2514600
+    ; warning
+    @(447.04 mm, 251.46 mm): Etichetta "PROG_TXD"
+    @(441.96 mm, 243.84 mm): Filo, lung. 16.064 mm
+[label_multiple_wires]: L'etichetta collega più di un filo a 4470400, 2540000
+    ; warning
+    @(447.04 mm, 254.00 mm): Etichetta "PROG_RXD"
+    @(441.96 mm, 243.84 mm): Filo, lung. 16.064 mm
+
+ ** ERC messages: 199  Errors 0  Warnings 199
+
+ ** Ignored checks:
+    - Global label only appears once in the schematic
+    - Four connection points are joined together
+    - SPICE model issue
+    - Assigned footprint doesn't match footprint filters
