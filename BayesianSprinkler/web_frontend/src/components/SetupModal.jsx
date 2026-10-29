@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { saveSettings } from '../services/settings.js'
+import { setWateringMode as persistWateringMode, fetchWateringMode } from '../services/api.js'
+import { requestNotificationPermission } from '../services/browserNotifications.js'
 import { LOCATION_OPTIONS, WATERING_OPTIONS, THEME_OPTIONS } from './setupOptions.js'
 
 function OptionGroup({ title, options, value, onChange, columns = 2 }) {
@@ -45,13 +47,26 @@ export function SetupModal({ onComplete, onPreview }) {
     onPreview?.(t)
   }
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     saveSettings({
       setupCompleted: true,
       useLocation,
       wateringMode,
       theme,
     })
+    // Best effort: the server owns the watering mode, but a setup that can't
+    // reach it must still complete — fall back to whatever the server had.
+    try {
+      await persistWateringMode(wateringMode)
+      if (wateringMode === 'notification') {
+        requestNotificationPermission()
+      }
+    } catch (e) {
+      console.warn('Watering mode not persisted:', e)
+      try {
+        saveSettings({ wateringMode: await fetchWateringMode() })
+      } catch (_) { /* offline: the settings panel will resync later */ }
+    }
     onComplete()
   }
 

@@ -1,43 +1,32 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchEspStatus, fetchEspHealth, fetchDashboard, fetchBayesianPlantStatus, fetchCistern, refillCistern } from '../services/api.js'
+import { resolveHealth } from '../services/health.js'
+
+const INITIAL_HEALTH = {
+  espData: null,
+  weather: null,
+  waterLowAlert: false,
+  espHealthy: false,
+  serverHealthy: false,
+  error: null,
+}
 
 export function useEspData() {
-  const [espData, setEspData] = useState(null)
-  const [weather, setWeather] = useState(null)
-  const [espHealthy, setEspHealthy] = useState(false)
-  const [waterLowAlert, setWaterLowAlert] = useState(false)
-  const [error, setError] = useState(null)
+  const [health, setHealth] = useState(INITIAL_HEALTH)
   const [loading, setLoading] = useState(true)
 
   const fetch = useCallback(async () => {
     try {
-      const [healthRes, statusRes, dashRes] = await Promise.allSettled([
+      const [espHealth, espStatus, dashboard] = await Promise.allSettled([
         fetchEspHealth(),
         fetchEspStatus(),
         fetchDashboard(),
       ])
-
-      setEspHealthy(healthRes.status === 'fulfilled')
-
-      // Preferred source: the server-resolved dashboard, which already
-      // merges the web forecast (with source flags) when the DHT reports -1.
-      if (dashRes.status === 'fulfilled') {
-        setEspData(dashRes.value.esp || {})
-        setWeather(dashRes.value.weather || null)
-        setWaterLowAlert(
-          dashRes.value.water_low_alert === 'on' ||
-          dashRes.value.water_low_alert === true,
-        )
-        setError(null)
-      } else if (statusRes.status === 'fulfilled') {
-        // Fallback: raw ESP snapshot when the Bayesian server is unreachable.
-        setEspData(statusRes.value)
-        setWeather(null)
-        setWaterLowAlert(statusRes.value.water_low_alert === 'on')
-        setError(null)
-      }
+      setHealth((previous) =>
+        resolveHealth(previous, { espHealth, espStatus, dashboard }),
+      )
     } catch (e) {
-      setError(e.message)
+      setHealth((previous) => ({ ...previous, error: e.message }))
     } finally {
       setLoading(false)
     }
@@ -49,7 +38,16 @@ export function useEspData() {
     return () => clearInterval(interval)
   }, [fetch])
 
-  return { espData, weather, espHealthy, waterLowAlert, error, loading, refetch: fetch }
+  return {
+    espData: health.espData,
+    weather: health.weather,
+    espHealthy: health.espHealthy,
+    serverHealthy: health.serverHealthy,
+    waterLowAlert: health.waterLowAlert,
+    error: health.error,
+    loading,
+    refetch: fetch,
+  }
 }
 
 export function usePlantStatuses() {

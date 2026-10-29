@@ -28,13 +28,14 @@ def db(tmp_path, monkeypatch):
     not used as a context manager, so lifespan never runs there)."""
     from bayesian_sprinkler import database
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "test.db")
+    database.init_db()
     init_audit_table()
     init_esp_events_table()
     yield
 
 
 @pytest.fixture
-def client():
+def client(db):
     with patch("bayesian_sprinkler.api.init_db"):
         with patch("bayesian_sprinkler.api.BackgroundScheduler"):
             with patch("bayesian_sprinkler.api.insert_record"):

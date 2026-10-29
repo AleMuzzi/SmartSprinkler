@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -53,6 +54,22 @@ def init_db():
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_plant_telemetry_timestamp
             ON plant_telemetry(timestamp)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                doses TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                opened_at TEXT,
+                read_at TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_notifications_created_at
+            ON notifications(created_at)
         """)
         conn.commit()
 
@@ -166,3 +183,91 @@ def get_cistern_level(default_ml: float = 30000.0) -> float:
 def set_cistern_level(level_ml: float) -> None:
     """Persist the current cistern level (single-row key-value)."""
     set_service_config("cistern_level_ml", f"{level_ml:.1f}")
+
+
+# ── Watering notifications ───────────────────────────────────────────
+
+# Rotating history: the notification centre keeps the newest rows and drops
+# the oldest once the cap is exceeded, so the table can't grow unbounded.
+MAX_NOTIFICATIONS = 200
+
+
+def _notification_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "created_at": row["created_at"],
+        "source": row["source"],
+        "doses": json.loads(row["doses"]),
+        "title": row["title"],
+        "body": row["body"],
+        "opened_at": row["opened_at"],
+        "read_at": row["read_at"],
+        "unread": row["opened_at"] is None and row["read_at"] is None,
+    }
+
+
+def insert_notification(source: str, doses: dict, title: str, body: str) -> int:
+    """Store a watering proposal (``{plant_id: dose_ml}``) and return its id."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO notifications (created_at, source, doses, title, body)
+               VALUES (?, ?, ?, ?, ?)""",
+            (now_local().isoformat(), source, json.dumps(doses), title, body),
+        )
+        conn.execute(
+            "DELETE FROM notifications WHERE id NOT IN "
+            "(SELECT id FROM notifications ORDER BY id DESC LIMIT ?)",
+            (MAX_NOTIFICATIONS,),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+
+def list_notifications(limit: int = 50) -> list[dict]:
+    """Newest first. Each entry carries ``unread`` = never opened AND never read."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM notifications ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [_notification_to_dict(row) for row in rows]
+
+
+def unread_notifications_count() -> int:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM notifications "
+            "WHERE opened_at IS NULL AND read_at IS NULL"
+        ).fetchone()
+    return int(row["n"])
+
+
+def _mark_notification(column: str, notification_id: int) -> bool:
+    """Set ``opened_at``/``read_at`` on one row. Returns False when unknown."""
+    if column not in ("opened_at", "read_at"):
+        raise ValueError(f"unsupported column {column!r}")
+    with get_connection() as conn:
+        cursor = conn.execute(
+            f"UPDATE notifications SET {column} = COALESCE({column}, ?) WHERE id = ?",
+            (now_local().isoformat(), notification_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def mark_notification_opened(notification_id: int) -> bool:
+    return _mark_notification("opened_at", notification_id)
+
+
+def mark_notification_read(notification_id: int) -> bool:
+    return _mark_notification("read_at", notification_id)
+
+
+def mark_all_notifications_read() -> int:
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "UPDATE notifications SET read_at = ? WHERE read_at IS NULL",
+            (now_local().isoformat(),),
+        )
+        conn.commit()
+        return cursor.rowcount

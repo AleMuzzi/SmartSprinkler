@@ -73,7 +73,10 @@ class _AppLoaderState extends State<_AppLoader> {
     await _guard('networkMonitor.start', () => monitor.start());
 
     final alertService = WaterAlertService();
-    await _guard('alertService.init', () => alertService.init(settings.apiUrl));
+    await _guard(
+      'alertService.init',
+      () => alertService.init(settings.apiUrl, bayesianUrl: settings.bayesianUrl),
+    );
     try {
       final granted = await alertService.ensureNotificationPermission();
       _hasNotificationPermission = granted;
@@ -143,6 +146,11 @@ class _MainNavigationPageState extends State<MainNavigationPage> with WidgetsBin
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     WaterAlertService.setAppForeground(state == AppLifecycleState.resumed);
+    if (state == AppLifecycleState.resumed) {
+      // The effective URL can change with the network (LAN/external), so
+      // keep the background poll on the current one.
+      WaterAlertService().updateBayesianUrl(Settings().bayesianUrl);
+    }
   }
 
   void _showNotificationPermissionDialog() {

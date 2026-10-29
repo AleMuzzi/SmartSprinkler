@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { loadSettings, saveSettings } from '../services/settings.js'
-import { fetchServiceConfig, setServicePaused } from '../services/api.js'
+import { fetchServiceConfig, setServicePaused, setWateringMode as persistWateringMode } from '../services/api.js'
+import { requestNotificationPermission } from '../services/browserNotifications.js'
 import { LOCATION_OPTIONS, WATERING_OPTIONS, THEME_OPTIONS } from './setupOptions.js'
 
 export function SettingsPanel({ onSave }) {
@@ -14,6 +15,10 @@ export function SettingsPanel({ onSave }) {
   const [servicePaused, setServicePausedState] = useState(false)
   const [serviceLoading, setServiceLoading] = useState(false)
   const [serviceError, setServiceError] = useState(null)
+  // Value actually persisted on the server — the watering mode is owned by
+  // the backend, not by localStorage.
+  const [serverMode, setServerMode] = useState('automatic')
+  const [modeError, setModeError] = useState(null)
 
   useEffect(() => {
     const s = loadSettings()
@@ -27,11 +32,34 @@ export function SettingsPanel({ onSave }) {
 
   useEffect(() => {
     fetchServiceConfig()
-      .then((data) => setServicePausedState(data.config?.paused === '1'))
+      .then((data) => {
+        setServicePausedState(data.config?.paused === '1')
+        const mode = data.config?.watering_mode
+        if (mode === 'automatic' || mode === 'notification') {
+          setServerMode(mode)
+          setWateringMode(mode)
+        }
+      })
       .catch((e) => setServiceError(e.message))
   }, [])
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setModeError(null)
+    // The server is the source of truth for the watering mode: persist it
+    // first so the local copy can never claim a mode the backend doesn't have.
+    if (wateringMode !== serverMode) {
+      try {
+        await persistWateringMode(wateringMode)
+        setServerMode(wateringMode)
+      } catch (e) {
+        setModeError(`Salvataggio modalità fallito: ${e.message}`)
+        return
+      }
+      if (wateringMode === 'notification') {
+        // User gesture: the browser only honours the permission prompt here.
+        requestNotificationPermission()
+      }
+    }
     saveSettings({ espUrl, bayesianUrl, pollingInterval, useLocation, wateringMode, theme })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -120,9 +148,12 @@ export function SettingsPanel({ onSave }) {
           </div>
           <p className="text-xs text-gray-400 mt-1">
             {wateringMode === 'notification'
-              ? 'In futuro: invece di innaffiare invieremo una notifica'
+              ? 'Il server non innaffia: genera una notifica con le piante e i ml da erogare'
               : 'L’innaffiatura parte automaticamente'}
           </p>
+          {modeError && (
+            <p className="text-xs text-red-500 mt-1">{modeError}</p>
+          )}
         </div>
 
         <div>

@@ -9,7 +9,9 @@ import 'package:smartsprinkler_app/data/settings.dart';
 import 'package:smartsprinkler_app/data/sprinkler.dart';
 import 'package:smartsprinkler_app/data/models/plant_data.dart';
 import 'package:smartsprinkler_app/data/models/weather_data.dart';
+import 'package:smartsprinkler_app/data/watering_report_service.dart';
 import 'package:smartsprinkler_app/model/command.dart';
+import 'package:smartsprinkler_app/ui/dashboard/watering_report_dialog.dart';
 import 'package:smartsprinkler_app/utils/toast.dart';
 
 class DashboardViewModel extends ChangeNotifier {
@@ -433,13 +435,21 @@ class DashboardViewModel extends ChangeNotifier {
           .post(Uri.parse('${settings.bayesianUrl}/api/inference/run'))
           .timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
-        final watered = (jsonDecode(response.body)['watered'] as Map<String, dynamic>).keys;
-        showAppToast(
-          watered.isEmpty
-              ? 'Inferenza eseguita — nessuna pianta da annaffiare'
-              : 'Inferenza eseguita — annaffiate: ${watered.join(', ')}',
-          fontSize: 14,
-        );
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final watered =
+            (json['watered'] as Map<String, dynamic>? ?? const {}).keys.toList();
+        if (json['mode'] == 'notification' && watered.isNotEmpty) {
+          // Dry-run: the server stored a proposal instead of watering.
+          showAppToast('Proposta pronta: ${watered.join(', ')}', fontSize: 14);
+          await _openLatestReport();
+        } else {
+          showAppToast(
+            watered.isEmpty
+                ? 'Inferenza eseguita — nessuna pianta da annaffiare'
+                : 'Inferenza eseguita — annaffiate: ${watered.join(', ')}',
+            fontSize: 14,
+          );
+        }
         await _fetchBayesianStatus();
         await _fetchEspStatus();
       } else {
@@ -447,6 +457,19 @@ class DashboardViewModel extends ChangeNotifier {
       }
     } catch (e) {
       showAppToast('Bayesian unreachable', fontSize: 14);
+    }
+  }
+
+  /// Opens the newest server-side proposal (notification mode) right away
+  /// instead of waiting for the background poll to notice it.
+  Future<void> _openLatestReport() async {
+    try {
+      final reports = await WateringReportService().fetchReports(limit: 1);
+      if (reports.isNotEmpty) {
+        await showWateringReportDialog(reports.first);
+      }
+    } catch (e) {
+      log('Watering report fetch error: $e');
     }
   }
 

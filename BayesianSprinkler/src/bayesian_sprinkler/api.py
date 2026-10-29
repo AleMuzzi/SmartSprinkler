@@ -6,6 +6,7 @@ import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from threading import Lock
+from typing import Literal
 
 import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -36,6 +37,12 @@ from bayesian_sprinkler.database import (
     get_all_service_config,
     get_cistern_level,
     set_cistern_level,
+    insert_notification,
+    list_notifications,
+    mark_notification_opened,
+    mark_notification_read,
+    mark_all_notifications_read,
+    unread_notifications_count,
 )
 from bayesian_sprinkler.local_time import configure as configure_timezone
 from bayesian_sprinkler.local_time import now as now_local
@@ -68,6 +75,11 @@ class AppState:
         self._cistern_level_ml: float = 30000.0  # default; reset by create_app from config
         self._last_watered_doses: dict[str, float] = {}
         self._service_paused: bool = False
+        # Watering behaviour: "automatic" dispenses water as soon as the
+        # inference cycle asks for it; "notification" only computes the same
+        # doses and notifies the clients instead. Persisted in service_config
+        # so the portal, the app and the hourly job all agree on it.
+        self._watering_mode: str = "automatic"
 
 
 state = AppState()
@@ -113,6 +125,15 @@ def _plant_from_message(message: str, plants_cfg: dict) -> str | None:
 class ManualWaterRequest(BaseModel):
     plant_type: str
     dose_ml: float | None = None
+
+
+# Watering modes understood by the server. Kept as a Literal on the request
+# model so FastAPI rejects anything else with a 422.
+WateringMode = Literal["automatic", "notification"]
+
+
+class WateringModeRequest(BaseModel):
+    mode: WateringMode
 
 
 class EvidenceNode(BaseModel):
@@ -229,6 +250,8 @@ async def lifespan(app: FastAPI):
     if deleted:
         logger.info("Pruned %d stale ESP events (retention 15 days)", deleted)
     state._service_paused = get_service_config("paused", "0") == "1"
+    saved_mode = get_service_config("watering_mode", "automatic")
+    state._watering_mode = saved_mode if saved_mode in ("automatic", "notification") else "automatic"
     state.scheduler = BackgroundScheduler()
     state.scheduler.add_job(
         func=lambda: _poll_weather(state),
@@ -751,8 +774,13 @@ def _register_routes(app: FastAPI):
     def inference_run():
         """Trigger a full inference cycle on demand (same code path as the
         hourly schedule). Returns which plants were watered so the UI can
-        confirm the effect without waiting for the next scheduled run."""
-        watered = _inference_cycle(state)
+        confirm the effect without waiting for the next scheduled run.
+
+        In ``notification`` mode nothing is dispensed: the same doses are
+        computed, persisted as a notification and reported back with
+        ``mode`` so the caller can show the matching message.
+        """
+        watered = _inference_cycle(state, source="manual")
         if watered is None:
             raise HTTPException(
                 503, "Inference failed — check server/ESP logs for details"
@@ -760,10 +788,10 @@ def _register_routes(app: FastAPI):
         log_event(
             "inference",
             "Manual inference triggered",
-            details=f"watered={list(watered.keys())}",
+            details=f"watered={list(watered.keys())} mode={state._watering_mode}",
             level="info",
         )
-        return {"status": "ok", "watered": watered}
+        return {"status": "ok", "watered": watered, "mode": state._watering_mode}
 
     @app.get(
         "/api/service/config",
@@ -813,6 +841,83 @@ def _register_routes(app: FastAPI):
     )
     def service_resume():
         return _set_service_paused(False)
+
+    @app.post(
+        "/api/service/watering-mode",
+        tags=["Service"],
+        summary="Switch between automatic watering and notification-only",
+        responses={
+            200: {"description": "Mode persisted"},
+            422: {"description": "Unknown watering mode"},
+        },
+    )
+    def set_watering_mode(req: WateringModeRequest):
+        """Persist the watering mode used by every inference cycle.
+
+        ``automatic`` (default) dispenses water immediately; ``notification``
+        only computes the doses and stores a notification for the clients.
+        """
+        previous = state._watering_mode
+        state._watering_mode = req.mode
+        set_service_config("watering_mode", req.mode)
+        logger.info("Watering mode: %s → %s", previous, req.mode)
+        log_event(
+            "inference",
+            "Watering mode changed",
+            details=f"mode={req.mode} previous={previous}",
+            level="info",
+        )
+        return {"status": "ok", "mode": req.mode, "previous": previous}
+
+    @app.get(
+        "/api/notifications",
+        tags=["Notifications"],
+        summary="Watering notifications (newest first) + unread badge count",
+        responses={200: {"description": "Notification history"}},
+    )
+    def notifications_list(limit: int = 50):
+        return {
+            "notifications": list_notifications(limit=limit),
+            "unread_count": unread_notifications_count(),
+        }
+
+    @app.post(
+        "/api/notifications/read-all",
+        tags=["Notifications"],
+        summary="Mark every notification as read (clears the badge)",
+        responses={200: {"description": "Number of rows updated"}},
+    )
+    def notifications_read_all():
+        updated = mark_all_notifications_read()
+        return {"status": "ok", "updated": updated, "unread_count": unread_notifications_count()}
+
+    @app.post(
+        "/api/notifications/{notification_id}/open",
+        tags=["Notifications"],
+        summary="Mark one notification as opened (its modal was shown)",
+        responses={
+            200: {"description": "Notification updated"},
+            404: {"description": "Notification not found"},
+        },
+    )
+    def notifications_open(notification_id: int):
+        if not mark_notification_opened(notification_id):
+            raise HTTPException(404, "Notification not found")
+        return {"status": "ok", "id": notification_id, "unread_count": unread_notifications_count()}
+
+    @app.post(
+        "/api/notifications/{notification_id}/read",
+        tags=["Notifications"],
+        summary="Mark one notification as read from the notification centre",
+        responses={
+            200: {"description": "Notification updated"},
+            404: {"description": "Notification not found"},
+        },
+    )
+    def notifications_read(notification_id: int):
+        if not mark_notification_read(notification_id):
+            raise HTTPException(404, "Notification not found")
+        return {"status": "ok", "id": notification_id, "unread_count": unread_notifications_count()}
 
     @app.get(
         "/api/health",
@@ -1298,23 +1403,57 @@ def _register_routes(app: FastAPI):
 # ── Background jobs ─────────────────────────────────────────────────
 
 
-def _inference_cycle(st: AppState) -> dict[str, float] | None:
-    """Run one full inference cycle and return the watered dosages.
+def _inference_cycle(st: AppState, source: str = "scheduled") -> dict[str, float] | None:
+    """Run one full inference cycle and return the proposed/watered doses.
 
-    Returns ``{plant_name: dose_seconds}`` for the plants actually watered
-    this cycle, or ``None`` when the cycle failed (error is logged). The
-    scheduled job ignores the return value; the manual ``/api/inference/run``
-    endpoint relays it to the caller.
+    Returns ``{plant_name: dose_ml}``, or ``None`` when the cycle failed
+    (error is logged). The scheduled job ignores the return value; the manual
+    ``/api/inference/run`` endpoint relays it to the caller.
+
+    With ``st._watering_mode == "notification"`` the cycle runs in dry-run
+    mode: the very same doses are computed but the ESP is never commanded and
+    the cistern is left untouched — a notification carrying those doses is
+    persisted instead so the portal and the app can show it.
     """
     try:
         status = st.esp.get_status()
         _capture_esp_status(st, status)
-        return _run_inference_with_status(st, status)
+        dry_run = st._watering_mode == "notification"
+        doses = _run_inference_with_status(st, status, dry_run=dry_run)
+        if dry_run and doses:
+            notification_id = _create_watering_notification(doses, source, st.config)
+            logger.info(
+                "Watering notification #%d created (%d plants, mode=notification)",
+                notification_id, len(doses),
+            )
+        return doses
     except Exception as e:
         tb = traceback.format_exc()
         logger.exception("Inference cycle failed")
         log_event("error", f"Inference cycle failed: {e}", details=tb, level="error")
         return None
+
+
+def _create_watering_notification(
+    doses: dict[str, float], source: str, plants_cfg: dict
+) -> int:
+    """Persist a watering proposal and return the notification id.
+
+    ``doses`` holds the exact mL values the automatic mode would have
+    dispensed, so the modal shows the same numbers as a real watering.
+    """
+    parts = [
+        f"{plants_cfg.get(name, {}).get('display_name', name)} {dose:.0f} ml"
+        for name, dose in doses.items()
+    ]
+    total = sum(doses.values())
+    title = (
+        f"{len(doses)} pianta da innaffiare"
+        if len(doses) == 1
+        else f"{len(doses)} piante da innaffiare"
+    )
+    body = f"{', '.join(parts)} — totale {total:.0f} ml"
+    return insert_notification(source=source, doses=doses, title=title, body=body)
 
 
 # Hard, model-independent floor on watering pulse volume. Any dose the BN
@@ -1369,18 +1508,29 @@ def _capture_esp_status(st: AppState, status: dict) -> None:
     st._esp_status_updated_at = datetime.utcnow()
 
 
-def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
+def _run_inference_with_status(
+    st: AppState, status: dict, dry_run: bool = False
+) -> dict[str, float]:
     """Run inference using a pre-fetched status dict.
 
     Shared between the scheduled inference cycle and simulations/tests that
     supply their own status snapshot (e.g. a mock ESP).
 
+    Parameters
+    ----------
+    dry_run:
+        When True the cycle computes the doses but never commands the ESP
+        and never decrements the cistern — used by the ``notification``
+        watering mode, where the user is notified instead of the plants
+        being watered.
+
     Returns
     -------
     dict[str, float]
-        ``{plant_name: dose_seconds}`` for the plants that were *actually*
-        watered by THIS inference call. Plants skipped due to the hour-window
-        block, ``will_water=False``, or pump-already-on are NOT included.
+        ``{plant_name: dose_ml}`` for the plants that were *actually* watered
+        by THIS inference call (or that WOULD have been, in dry-run mode).
+        Plants skipped due to the hour-window block, ``will_water=False``,
+        or pump-already-on are NOT included.
         The caller (e.g. ``SimulationEngine._step_locked``) uses this dict
         to apply the post-watering soil boost — using ``_last_watered_doses``
         for that is unsafe because it is a persistent dict that survives
@@ -1560,34 +1710,52 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
             )
 
             if will_water and status.get("water_low_alert") != "on":
-                st.esp.start_watering(cfg["esp_target"])
-                time.sleep(dose_seconds)
-                st.esp.stop_watering(cfg["esp_target"])
-                st._last_watered_doses[plant_name] = dose_ml
-                triggered_doses[plant_name] = dose_ml
-                # Track cistern water usage. Cap at 0 — the sensor (water_low_alert)
-                # is the source of truth for "tank is empty"; we just keep the
-                # estimate conservative.
-                previous_level = st._cistern_level_ml
-                st._cistern_level_ml = max(0.0, previous_level - dose_ml)
-                set_cistern_level(st._cistern_level_ml)
-                cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
-                if st._cistern_level_ml != previous_level:
-                    logger.debug(
-                        "Cistern: %.0f → %.0f mL (−%.0f mL for %s)",
-                        previous_level, st._cistern_level_ml, dose_ml, cfg["display_name"],
+                if dry_run:
+                    # Notification mode: report the exact dose that would
+                    # have been dispensed, but never touch the ESP, the
+                    # cistern or _last_watered_doses.
+                    triggered_doses[plant_name] = dose_ml
+                    cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
+                    log_event(
+                        "inference",
+                        f"Watering proposed: {cfg['display_name']}",
+                        details=(
+                            f"target={cfg['esp_target']} dose={dose_ml:.0f}mL ({dose_seconds:.2f}s) "
+                            f"prob={prob:.2f} threshold={threshold} hour={hour_now} "
+                            f"cistern={st._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
+                        ),
+                        level="info",
                     )
-                log_event(
-                    "command",
-                    f"Watering triggered: {cfg['display_name']}",
-                    details=(
-                        f"target={cfg['esp_target']} dose={dose_ml:.0f}mL ({dose_seconds:.2f}s) "
-                        f"prob={prob:.2f} threshold={threshold} hour={hour_now} "
-                        f"cistern={st._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
-                    ),
-                    level="debug",
-                )
-                triggered_plants.append(plant_name)
+                    triggered_plants.append(plant_name)
+                else:
+                    st.esp.start_watering(cfg["esp_target"])
+                    time.sleep(dose_seconds)
+                    st.esp.stop_watering(cfg["esp_target"])
+                    st._last_watered_doses[plant_name] = dose_ml
+                    triggered_doses[plant_name] = dose_ml
+                    # Track cistern water usage. Cap at 0 — the sensor (water_low_alert)
+                    # is the source of truth for "tank is empty"; we just keep the
+                    # estimate conservative.
+                    previous_level = st._cistern_level_ml
+                    st._cistern_level_ml = max(0.0, previous_level - dose_ml)
+                    set_cistern_level(st._cistern_level_ml)
+                    cistern_capacity = st.config.get("cistern_capacity_ml", 30000)
+                    if st._cistern_level_ml != previous_level:
+                        logger.debug(
+                            "Cistern: %.0f → %.0f mL (−%.0f mL for %s)",
+                            previous_level, st._cistern_level_ml, dose_ml, cfg["display_name"],
+                        )
+                    log_event(
+                        "command",
+                        f"Watering triggered: {cfg['display_name']}",
+                        details=(
+                            f"target={cfg['esp_target']} dose={dose_ml:.0f}mL ({dose_seconds:.2f}s) "
+                            f"prob={prob:.2f} threshold={threshold} hour={hour_now} "
+                            f"cistern={st._cistern_level_ml:.0f}/{cistern_capacity:.0f}mL"
+                        ),
+                        level="debug",
+                    )
+                    triggered_plants.append(plant_name)
             else:
                 st._last_watered_doses.pop(plant_name, None)
                 if will_water and status.get("water_low_alert") == "on":
@@ -1596,13 +1764,16 @@ def _run_inference_with_status(st: AppState, status: dict) -> dict[str, float]:
                               details=f"prob={prob:.2f} threshold={threshold}",
                               level="warn")
 
+        verb = "proposed" if dry_run else "watered"
         details = (f"plants={[c['display_name'] for c in st.config['plants'].values()]}; "
                    f"soil_moisture={status['soil_moisture']}; "
                    f"air_temp={status['air_temperature']}; air_humid={status['air_humidity']}; "
                    f"cloud_cover={wx['cloud_cover']}; rain={wx['rain_forecast']}; "
                    f"hour={hour_now}; watered={triggered_plants}; "
-                   f"hour_blocked={blocked_by_hour}; bn_would_water={bn_would_water}")
-        log_event("inference", f"Inference cycle completed ({len(triggered_plants)} watered)",
+                   f"hour_blocked={blocked_by_hour}; bn_would_water={bn_would_water}; "
+                   f"mode={'notification' if dry_run else 'automatic'}")
+        log_event("inference",
+                  f"Inference cycle completed ({len(triggered_plants)} {verb})",
                   details=details,
                   level="info")
     except Exception as e:

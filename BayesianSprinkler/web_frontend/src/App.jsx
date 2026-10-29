@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useEspData, usePlantStatuses, useCisternStatus } from './hooks/usePolling.js'
+import { useNotifications } from './hooks/useNotifications.js'
 import { TelemetryPanel } from './components/TelemetryPanel.jsx'
 import { BayesianInsights } from './components/BayesianInsights.jsx'
 import { ControlPanel } from './components/ControlPanel.jsx'
@@ -12,16 +13,29 @@ import { HealthBar } from './components/StatusBadge.jsx'
 import { SimulationView } from './components/SimulationView.jsx'
 import { CisternCard, CisternWidget } from './components/SimulationView.jsx'
 import { SetupModal } from './components/SetupModal.jsx'
-import { getSettings, runInference } from './services/api.js'
-import { loadSettings } from './services/settings.js'
+import { NotificationBell } from './components/NotificationBell.jsx'
+import { WateringReportModal } from './components/WateringReportModal.jsx'
+import { getSettings, runInference, fetchWateringMode } from './services/api.js'
+import {
+  hasNotificationApi,
+  raiseBrowserNotification,
+  requestNotificationPermission,
+} from './services/browserNotifications.js'
+import { loadSettings, saveSettings } from './services/settings.js'
 
-function Toast({ message, type }) {
+function Toast({ message, type, onClick }) {
   const bg = type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-600' : 'bg-gray-700'
-  return (
-    <div className={`fixed bottom-4 right-4 ${bg} text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50`}>
-      {message}
-    </div>
-  )
+  const className = `fixed bottom-4 right-4 ${bg} text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50 ${
+    onClick ? 'cursor-pointer hover:opacity-90 text-left' : ''
+  }`
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {message}
+      </button>
+    )
+  }
+  return <div className={className}>{message}</div>
 }
 
 export default function App() {
@@ -29,7 +43,7 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [setupCompleted, setSetupCompleted] = useState(() => loadSettings().setupCompleted)
   const [appSettings, setAppSettings] = useState(() => loadSettings())
-  const { espData, weather, espHealthy, waterLowAlert, error, loading } = useEspData()
+  const { espData, weather, espHealthy, serverHealthy, waterLowAlert, error, loading } = useEspData()
   const { plantStatuses, refetch: refetchPlantStatuses } = usePlantStatuses()
   const { cistern, refill: refillCistern, refetch: refetchCistern, cisternError } = useCisternStatus(getSettings().bayesianUrl)
 
@@ -52,9 +66,60 @@ export default function App() {
     setAppSettings(loadSettings())
   }, [])
 
-  const showToast = useCallback((msg, type = 'info') => {
-    setToast({ message: msg, type })
-    setTimeout(() => setToast(null), 3000)
+  const showToast = useCallback((msg, type = 'info', onClick = null) => {
+    setToast({ message: msg, type, onClick })
+    setTimeout(() => setToast(null), onClick ? 8000 : 3000)
+  }, [])
+
+  const [reportNotification, setReportNotification] = useState(null)
+
+  const handleNewNotifications = useCallback((fresh) => {
+    const latest = fresh[0]
+    showToast(`${latest.title} — apri per i dettagli`, 'info', () => setReportNotification(latest))
+
+    if (!hasNotificationApi()) return
+    const raise = () => {
+      fresh.forEach((n) => {
+        raiseBrowserNotification({
+          title: n.title,
+          body: n.body,
+          tag: `watering-${n.id}`,
+          onClick: () => setReportNotification(n),
+        })
+      })
+    }
+    if (Notification.permission === 'granted') {
+      raise()
+    } else if (Notification.permission === 'default') {
+      // Fallback for browsers that only grant permission after a user
+      // gesture (the settings/setup flow requests it explicitly).
+      requestNotificationPermission().then((permission) => {
+        if (permission === 'granted') raise()
+      })
+    }
+  }, [showToast])
+
+  const {
+    notifications,
+    unreadCount,
+    refresh: refreshNotifications,
+    open: markNotificationOpen,
+    readAll: markAllNotificationsRead,
+  } = useNotifications({ onNew: handleNewNotifications })
+
+  // Opening the report marks it as opened server-side, which clears the badge.
+  useEffect(() => {
+    if (reportNotification) {
+      markNotificationOpen(reportNotification).catch(() => {})
+    }
+  }, [reportNotification, markNotificationOpen])
+
+  // The server owns the watering mode: mirror it into the local settings so
+  // the setup modal and the settings panel show the effective value.
+  useEffect(() => {
+    fetchWateringMode()
+      .then((mode) => saveSettings({ wateringMode: mode }))
+      .catch(() => { /* offline: keep the cached value */ })
   }, [])
 
   const handleCisternRefill = useCallback(async () => {
@@ -72,30 +137,48 @@ export default function App() {
     try {
       const res = await runInference()
       const watered = Object.keys(res.watered || {})
-      showToast(
-        watered.length
-          ? `Inferenza eseguita — ${watered.join(', ')} annaffiate`
-          : 'Inferenza eseguita — nessuna pianta da annaffiare',
-        'success',
-      )
+      if (res.mode === 'notification') {
+        if (watered.length) {
+          // Dry-run: the proposal is already stored server-side, refresh so
+          // the bell and the toast fire right away instead of on next poll.
+          refreshNotifications()
+        } else {
+          showToast('Inferenza eseguita — nessuna pianta da annaffiare', 'success')
+        }
+      } else {
+        showToast(
+          watered.length
+            ? `Inferenza eseguita — ${watered.join(', ')} annaffiate`
+            : 'Inferenza eseguita — nessuna pianta da annaffiare',
+          'success',
+        )
+      }
       refetchPlantStatuses()
     } catch (e) {
       showToast(`Inferenza fallita: ${e.message}`, 'error')
     } finally {
       setInferenceRunning(false)
     }
-  }, [refetchPlantStatuses, showToast])
+  }, [refetchPlantStatuses, refreshNotifications, showToast])
 
   return (
     <div className="min-h-screen bg-smart-light">
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <img src="/favicon.png" alt="SmartSprinkler" className="w-7 h-7" />
-            <h1 className="text-xl font-bold text-gray-800">SmartSprinkler</h1>
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap min-w-0">
+            <div className="flex items-center gap-2">
+              <img src="/favicon.png" alt="SmartSprinkler" className="w-7 h-7" />
+              <h1 className="text-xl font-bold text-gray-800">SmartSprinkler</h1>
+            </div>
+            <div className="hidden sm:block w-px h-6 bg-gray-200" aria-hidden="true" />
+            <HealthBar
+              espOnline={espHealthy}
+              serverOnline={serverHealthy}
+              waterLowAlert={waterLowAlert}
+            />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <CisternWidget
               levelMl={cistern.levelMl}
               capacityMl={cistern.capacityMl}
@@ -103,7 +186,12 @@ export default function App() {
               onRefill={handleCisternRefill}
               onExpand={() => setActiveTab('dashboard')}
             />
-            <HealthBar espOnline={espHealthy} bayesianOnline={!error} waterLowAlert={waterLowAlert} />
+            <NotificationBell
+              notifications={notifications}
+              unreadCount={unreadCount}
+              onOpen={setReportNotification}
+              onReadAll={markAllNotificationsRead}
+            />
           </div>
         </div>
         {/* Nav tabs */}
@@ -150,8 +238,8 @@ export default function App() {
               error={cisternError}
             />
 
-            {/* Bayesian insights */}
-            {error ? null : (
+            {/* Bayesian insights — served by the same backend as the badge */}
+            {!serverHealthy ? null : (
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-500">Ciclo di inferenza: ogni ora (al minuto 4); qui puoi forzarlo subito</span>
@@ -214,7 +302,14 @@ export default function App() {
         />
       )}
 
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      <WateringReportModal
+        notification={reportNotification}
+        onClose={() => setReportNotification(null)}
+      />
+
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClick={toast.onClick || null} />
+      )}
     </div>
   )
 }

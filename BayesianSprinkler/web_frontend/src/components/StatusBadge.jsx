@@ -10,11 +10,11 @@ function StatusBadge({ status, label }) {
   )
 }
 
-export function HealthBar({ espOnline, bayesianOnline, waterLowAlert }) {
+export function HealthBar({ espOnline, serverOnline, waterLowAlert }) {
   return (
     <div className="flex gap-4 flex-wrap items-center">
       <StatusBadge status={espOnline ? 'online' : 'offline'} label="ESP32" />
-      <StatusBadge status={bayesianOnline ? 'online' : 'offline'} label="Bayesian" />
+      <StatusBadge status={serverOnline ? 'online' : 'offline'} label="Server" />
       {waterLowAlert && (
         <div className="flex items-center gap-2 bg-red-100 px-3 py-1 rounded-full border border-red-300">
           <span className="text-lg">⚠️</span>

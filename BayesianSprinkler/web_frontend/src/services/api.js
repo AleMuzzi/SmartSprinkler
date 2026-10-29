@@ -258,6 +258,57 @@ export async function setServicePaused(paused) {
   return res.json()
 }
 
+export async function fetchWateringMode() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/service/config`)
+  if (!res.ok) throw new Error(`Watering mode fetch failed: ${res.status}`)
+  const data = await res.json()
+  return data.config?.watering_mode === 'notification' ? 'notification' : 'automatic'
+}
+
+export async function setWateringMode(mode) {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/service/watering-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  })
+  if (!res.ok) throw new Error(`Watering mode save failed: ${res.status}`)
+  return res.json()
+}
+
+// ── Watering notifications (bell / mobile app) ────────────────────────
+// The server owns the history and the unread badge so the portal and the
+// app always agree on what has already been seen.
+
+export async function fetchNotifications(limit = 50) {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/notifications?limit=${limit}`)
+  if (!res.ok) throw new Error(`Notifications fetch failed: ${res.status}`)
+  return res.json()
+}
+
+export async function openNotification(id) {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/notifications/${id}/open`, { method: 'POST' })
+  if (!res.ok) throw new Error(`Notification open failed: ${res.status}`)
+  return res.json()
+}
+
+export async function readNotification(id) {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/notifications/${id}/read`, { method: 'POST' })
+  if (!res.ok) throw new Error(`Notification read failed: ${res.status}`)
+  return res.json()
+}
+
+export async function readAllNotifications() {
+  const { bayesianUrl } = getSettings()
+  const res = await fetchWithTimeout(`${bayesianUrl}/api/notifications/read-all`, { method: 'POST' })
+  if (!res.ok) throw new Error(`Notifications read-all failed: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchCharts({ startDate = null, endDate = null, bucket = '1h' } = {}) {
   const { bayesianUrl } = getSettings()
   const params = new URLSearchParams()
